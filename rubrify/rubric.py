@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import copy
 import json
+import time
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 from rubrify._types import (
     AdviceRule,
@@ -18,7 +19,21 @@ from rubrify._types import (
     Scoring,
     ValidationMust,
 )
-from rubrify.result import EvaluationResult
+from rubrify.result import EvaluationResult, EvaluationTrace
+
+if TYPE_CHECKING:
+    from rubrify.input_render import InputRenderer
+
+
+def _infer_parser_kind(schema: OutputSchema | None) -> str:
+    """Return the parser label used by ``EvaluationTrace``."""
+    if schema is None:
+        return "raw"
+    if schema.constraints.get("must_be_json"):
+        return "json"
+    if schema.constraints.get("must_use_xml_tags"):
+        return "xml"
+    return "raw"
 
 
 class Rubric:
@@ -44,6 +59,7 @@ class Rubric:
         self.definitions: dict[str, str] = {}  # For ComplianceJudge <definitions>
         self.what_to_judge: str = ""  # For ComplianceJudge <what_to_judge>
         self.scoring_guidance: str = ""  # For ComplianceJudge <scoring_guidance>
+        self.input_renderer: InputRenderer | None = None  # Phase 1: optional user-msg renderer
 
     def add_criterion(self, criterion: Criterion) -> None:
         self.criteria[criterion.id] = criterion
@@ -160,28 +176,64 @@ class Rubric:
             data["scoring_guidance"] = self.scoring_guidance
         return json.dumps(data, indent=2)
 
-    def evaluate(self, text: str, *, client: Any, model: str, **kwargs: Any) -> EvaluationResult:
-        from xml.sax.saxutils import escape as xml_escape
+    def evaluate(
+        self,
+        text: str,
+        *,
+        client: Any,
+        model: str,
+        repair: bool = False,
+        observe: bool = False,
+        **kwargs: Any,
+    ) -> EvaluationResult:
+        import dataclasses
 
+        from rubrify.input_render import CandidateTextRenderer, validate_payload
         from rubrify.parse import parse_response
 
         system_msg = self.to_xml()
-        parts = [f"<candidate_text>{xml_escape(text)}</candidate_text>"]
-        for key in ("context", "genre", "goal", "audience"):
-            if key in kwargs:
-                parts.append(f"<{key}>{xml_escape(str(kwargs[key]))}</{key}>")
-        user_msg = "\n".join(parts)
+
+        payload: dict[str, Any] = {"text": text, **kwargs}
+        # Legacy alias: the pre-Phase-1 implementation always wrapped ``text`` in
+        # <candidate_text>, which means any rubric declaring ``candidate_text`` as
+        # a required input expects ``text`` to satisfy it. Expose it explicitly
+        # so ``validate_payload`` accepts the legacy call shape.
+        if "candidate_text" not in payload:
+            payload["candidate_text"] = text
+
+        if self.inputs:
+            validate_payload(payload, self.inputs)
+
+        renderer = self.input_renderer or CandidateTextRenderer()
+        user_msg = renderer.render(payload)
 
         messages = [
             {"role": "system", "content": system_msg},
             {"role": "user", "content": user_msg},
         ]
+
+        start = time.monotonic()
         raw = client.chat(
             messages=messages,
             model=model,
             temperature=kwargs.get("temperature", 0.0),
         )
-        return parse_response(raw, self.output_schema)
+        elapsed = time.monotonic() - start
+
+        result = parse_response(raw, self.output_schema, repair=repair)
+
+        if observe:
+            trace = EvaluationTrace(
+                system_prompt=system_msg,
+                user_message=user_msg,
+                model=model,
+                parser=_infer_parser_kind(self.output_schema),
+                repair_notes=result.repair_notes,
+                elapsed_seconds=elapsed,
+            )
+            result = dataclasses.replace(result, trace=trace)
+
+        return result
 
     def evaluate_batch(
         self,
@@ -279,6 +331,33 @@ class ConstraintRubric:
         self.instructions = instructions
         self.output_format = output_format
         self.examples: list[ICLExample] = examples or []
+        self.input_renderer: InputRenderer | None = None  # Phase 1: optional renderer
+
+    @overload
+    def apply(
+        self,
+        text: str,
+        *,
+        client: Any,
+        model: str,
+        parse_as: str | None = ...,
+        repair: bool = ...,
+        observe: Literal[False] = ...,
+        **kwargs: Any,
+    ) -> str | dict[str, Any]: ...
+
+    @overload
+    def apply(
+        self,
+        text: str,
+        *,
+        client: Any,
+        model: str,
+        parse_as: str | None = ...,
+        repair: bool = ...,
+        observe: Literal[True],
+        **kwargs: Any,
+    ) -> tuple[str | dict[str, Any], EvaluationTrace]: ...
 
     def apply(
         self,
@@ -287,21 +366,59 @@ class ConstraintRubric:
         client: Any,
         model: str,
         parse_as: str | None = None,
+        repair: bool = False,
+        observe: bool = False,
         **kwargs: Any,
-    ) -> str | dict[str, Any]:
+    ) -> str | dict[str, Any] | tuple[str | dict[str, Any], EvaluationTrace]:
         system_msg = self.to_xml()
+
+        if self.input_renderer is not None:
+            payload: dict[str, Any] = {"text": text, **kwargs}
+            user_msg = self.input_renderer.render(payload)
+        else:
+            user_msg = text
+
         messages = [
             {"role": "system", "content": system_msg},
-            {"role": "user", "content": text},
+            {"role": "user", "content": user_msg},
         ]
+        start = time.monotonic()
         raw: str = client.chat(
             messages=messages,
             model=model,
             temperature=kwargs.get("temperature", 0.0),
         )
+        elapsed = time.monotonic() - start
+
+        repair_notes: tuple[str, ...] = ()
+        parsed: str | dict[str, Any]
+
         if parse_as == "json":
-            return json.loads(raw)  # type: ignore[no-any-return]
-        return raw
+            source = raw
+            if repair:
+                from rubrify.repair import extract_json_candidate
+
+                repair_result = extract_json_candidate(raw)
+                repair_notes = repair_result.notes
+                if repair_result.repaired:
+                    source = repair_result.text
+            parsed = json.loads(source)
+        else:
+            parsed = raw
+
+        if observe:
+            parser_kind = "json" if parse_as == "json" else "raw"
+            trace = EvaluationTrace(
+                system_prompt=system_msg,
+                user_message=user_msg,
+                model=model,
+                parser=parser_kind,
+                repair_notes=repair_notes,
+                elapsed_seconds=elapsed,
+            )
+            return parsed, trace
+
+        return parsed
 
     def to_xml(self) -> str:
         """Serialize to XML system prompt format."""

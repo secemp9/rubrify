@@ -38,7 +38,21 @@ from rubrify._types import (
 )
 from rubrify.client import ChatClient, Client
 from rubrify.generate import generate, refine
-from rubrify.result import EvaluationResult
+from rubrify.input_render import (
+    CandidateTextRenderer,
+    ConversationJudgeRenderer,
+    InputRenderer,
+    PassthroughRenderer,
+    TemplateRenderer,
+    validate_payload,
+)
+from rubrify.repair import (
+    RepairResult,
+    attempt_schema_repair,
+    extract_json_candidate,
+    extract_xml_candidate,
+)
+from rubrify.result import EvaluationResult, EvaluationTrace
 from rubrify.rubric import ConstraintRubric, CoproductRubric, ProductRubric, Rubric
 
 
@@ -83,6 +97,7 @@ __all__ = [
     "Instruction",
     "ICLExample",
     "EvaluationResult",
+    "EvaluationTrace",
     "ValidationResult",
     "AddCriterion",
     "RemoveCriterion",
@@ -103,4 +118,16 @@ __all__ = [
     "COMPLIANCE_PROFILE",
     "compose_from_profile",
     "META_CRITERION_TO_PROPERTIES",
+    # Phase 1: input renderers
+    "InputRenderer",
+    "CandidateTextRenderer",
+    "ConversationJudgeRenderer",
+    "TemplateRenderer",
+    "PassthroughRenderer",
+    "validate_payload",
+    # Phase 1: repair layer
+    "RepairResult",
+    "extract_json_candidate",
+    "extract_xml_candidate",
+    "attempt_schema_repair",
 ]

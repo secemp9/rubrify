@@ -5,6 +5,25 @@ from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
+class EvaluationTrace:
+    """Opt-in observability record of a single ``evaluate`` / ``apply`` call.
+
+    Phase 1 deliverable. Populated only when the caller passes ``observe=True``.
+    The trace is attached to the result (or returned alongside it for
+    ``ConstraintRubric.apply``) so the user can inspect exactly what was sent
+    to the model, which parser ran, whether repair fired, and how long the
+    round-trip took.
+    """
+
+    system_prompt: str
+    user_message: str
+    model: str
+    parser: str  # "json" | "xml" | "raw"
+    repair_notes: tuple[str, ...]
+    elapsed_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
 class EvaluationResult:
     score: int | None = None  # 0-100 for scoring, 0-15 for detection
     label: str | None = None  # "Publish-ready", "Severe", etc.
@@ -19,3 +38,7 @@ class EvaluationResult:
     risk: int | None = None  # For detection rubrics
     band: str | None = None  # "Severe", "Clean", etc.
     raw: str = ""  # Raw model output for debugging
+    extras: dict[str, Any] = field(default_factory=dict)  # Unknown output fields passthrough
+    repaired: bool = False
+    repair_notes: tuple[str, ...] = ()
+    trace: EvaluationTrace | None = None

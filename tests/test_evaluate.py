@@ -132,6 +132,58 @@ class TestRubricEvaluate:
         assert "&lt;html&gt;" in user_msg
         assert "&amp;" in user_msg
 
+    def test_backwards_compat_default_path_byte_identical(self) -> None:
+        """The default evaluate(text) path (no renderer, no repair, no observe)
+        must produce the exact same system prompt and user message that the
+        pre-Phase-1 implementation produced. This locks the legacy contract."""
+        from xml.sax.saxutils import escape as xml_escape
+
+        r = rubrify.load(str(FIXTURES / "on_writing_well_v3.xml"))
+        response = json.dumps({"score": 50})
+        client = MockClient(response)
+
+        text = 'Some candidate <text> & "quotes"'
+        r.evaluate(
+            text,
+            client=client,
+            model="test-model",
+            context="academic",
+            genre="science_tech",
+            goal="explain",
+            audience="layperson",
+        )
+
+        # Reconstruct the exact pre-Phase-1 expected messages.
+        expected_system = r.to_xml()
+        expected_user = "\n".join(
+            [
+                f"<candidate_text>{xml_escape(text)}</candidate_text>",
+                f"<context>{xml_escape('academic')}</context>",
+                f"<genre>{xml_escape('science_tech')}</genre>",
+                f"<goal>{xml_escape('explain')}</goal>",
+                f"<audience>{xml_escape('layperson')}</audience>",
+            ]
+        )
+
+        assert client.last_messages[0]["content"] == expected_system
+        assert client.last_messages[1]["content"] == expected_user
+
+    def test_backwards_compat_no_kwargs_byte_identical(self) -> None:
+        """The default evaluate(text) path with only text (no extras) is
+        byte-identical to the pre-Phase-1 shape."""
+        from xml.sax.saxutils import escape as xml_escape
+
+        r = rubrify.Rubric(name="Test", mission="Test.")
+        r.add_criterion(Criterion(id="C1", name="X", weight=100, anchors={0: "a", 5: "b"}))
+        r.output_schema = OutputSchema(constraints={"must_be_json": True})
+
+        client = MockClient(json.dumps({"score": 10}))
+        text = "just some body"
+        r.evaluate(text, client=client, model="m")
+
+        expected_user = f"<candidate_text>{xml_escape(text)}</candidate_text>"
+        assert client.last_messages[1]["content"] == expected_user
+
 
 class TestConstraintRubricApply:
     def test_apply_returns_raw_string(self) -> None:

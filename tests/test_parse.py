@@ -138,6 +138,73 @@ class TestParseXmlResponse:
         assert result.rationale == "Test reason"
 
 
+class TestParseResponseRepair:
+    """Phase 1: opt-in repair path on parse_response."""
+
+    def test_repair_false_leaves_notes_empty(self) -> None:
+        schema = OutputSchema(constraints={"must_be_json": True})
+        result = parse_response(json.dumps({"score": 20}), schema)
+        assert result.repaired is False
+        assert result.repair_notes == ()
+
+    def test_repair_true_on_clean_json_does_nothing(self) -> None:
+        schema = OutputSchema(constraints={"must_be_json": True})
+        raw = json.dumps({"score": 88, "class": "Strong"})
+        result = parse_response(raw, schema, repair=True)
+        assert result.score == 88
+        assert result.repaired is False
+        # No-op repair still returns empty notes (strategy 1 succeeded).
+        assert result.repair_notes == ()
+
+    def test_repair_true_recovers_from_code_fenced_json(self) -> None:
+        schema = OutputSchema(constraints={"must_be_json": True})
+        raw = "Here is my output:\n" "```json\n" '{"score": 72, "class": "Good"}\n' "```"
+        result = parse_response(raw, schema, repair=True)
+        assert result.score == 72
+        assert result.label == "Good"
+        assert result.repaired is True
+        assert result.repair_notes
+        assert "code fence" in result.repair_notes[0]
+        # Original raw is preserved on the result.
+        assert result.raw == raw
+
+    def test_repair_true_recovers_from_prose_wrapped_json(self) -> None:
+        schema = OutputSchema(constraints={"must_be_json": True})
+        raw = (
+            "I thought about this carefully and here is my evaluation: "
+            '{"score": 42, "rationale": "BECAUSE: fine"} '
+            "Let me know if you need anything else."
+        )
+        result = parse_response(raw, schema, repair=True)
+        assert result.score == 42
+        assert result.rationale == "BECAUSE: fine"
+        assert result.repaired is True
+        assert result.repair_notes
+
+    def test_repair_true_populates_notes_on_failure(self) -> None:
+        schema = OutputSchema(constraints={"must_be_json": True})
+        raw = "totally not json no braces anywhere"
+        result = parse_response(raw, schema, repair=True)
+        assert result.repaired is False
+        assert result.repair_notes == ("no valid JSON object found",)
+        assert result.raw == raw
+
+    def test_repair_true_on_xml_schema_recovers_from_prose(self) -> None:
+        schema = OutputSchema(constraints={"must_use_xml_tags": True})
+        raw = (
+            "Analysis follows: the response is fine. "
+            "<Rationale>Good stuff.</Rationale> "
+            "<Judgement>Yes</Judgement> & that's my take."
+        )
+        # The bare `&` should cause strategy 1 (ET direct parse) to fail and
+        # force the required-tag regex scrape path.
+        result = parse_response(raw, schema, repair=True)
+        assert result.verdict == "Yes"
+        assert "Good stuff" in result.rationale
+        assert result.repaired is True
+        assert result.repair_notes
+
+
 class TestNormalizeAdvice:
     def test_none_returns_none(self) -> None:
         assert _normalize_advice(None) is None
