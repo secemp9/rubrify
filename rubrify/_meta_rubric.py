@@ -273,12 +273,13 @@ META_EVALUATOR.add_criterion(
         weight=25,
         anchors={
             0: "No output schema.",
-            1: "Schema exists but doesn't reference criteria.",
-            2: "Schema references some criteria; key order unspecified.",
-            3: "Schema references all criteria with fixed key order.",
-            4: "Schema includes json_template with typed fields matching criteria.",
-            5: "Full alignment: every criterion ID appears in template; "
-            "steering constraints present.",
+            1: "Schema exists but doesn't reference criteria or decision points.",
+            2: "Schema references some criteria or verdicts; structure unspecified.",
+            3: "Schema specifies exact structure (JSON keys or XML tags) with fixed ordering.",
+            4: "Schema includes a concrete template (json_template or xml tag set) "
+            "with typed fields matching criteria or verdicts.",
+            5: "Full alignment: every criterion ID or verdict value appears in the template; "
+            "steering constraints present. Equally valid for JSON and XML output formats.",
         },
         notes="Property lattice: p_schema, p_aligned, p_steering. "
         "Sufficient conditions: S2_aligned, S5_steering.",
@@ -310,9 +311,12 @@ META_EVALUATOR.add_criterion(
             0: "No disqualifiers.",
             1: "One vague disqualifier.",
             2: "Disqualifiers exist but overlap with soft penalties.",
-            3: "Clear disqualifiers for major failure modes; binary outcomes.",
-            4: "Disqualifiers cover safety, plagiarism, and schema violation.",
-            5: "Comprehensive DQ set with explicit pattern triggers where applicable.",
+            3: "Clear disqualifiers for major failure modes relevant to the rubric's domain; "
+            "binary outcomes.",
+            4: "Disqualifiers cover domain-relevant failure modes (e.g., empty input, "
+            "wrong language, schema violation, task non-applicability).",
+            5: "Comprehensive DQ set with explicit pattern triggers or decision rules "
+            "where applicable.",
         },
         notes="Property lattice: p_dq. Sufficient condition: S4_disqualifiers.",
     )
