@@ -23,6 +23,7 @@ from rubrify.result import ConstraintResult, EvaluationResult, EvaluationTrace
 
 if TYPE_CHECKING:
     from rubrify.input_render import InputRenderer
+    from rubrify.provenance import RubricProvenance
     from rubrify.repair import RepairResult
 
 
@@ -61,6 +62,8 @@ class Rubric:
         self.what_to_judge: str = ""  # For ComplianceJudge <what_to_judge>
         self.scoring_guidance: str = ""  # For ComplianceJudge <scoring_guidance>
         self.input_renderer: InputRenderer | None = None  # Phase 1: optional user-msg renderer
+        # Phase 4: optional lineage metadata. NEVER emitted in to_xml().
+        self.provenance: RubricProvenance | None = None
 
     def add_criterion(self, criterion: Criterion) -> None:
         self.criteria[criterion.id] = criterion
@@ -251,6 +254,25 @@ class Rubric:
         from pathlib import Path
 
         Path(path).write_text(self.to_xml(), encoding="utf-8")
+
+    def export_provenance(self, path: str) -> None:
+        """Write ``self.provenance`` to a sidecar JSON file at ``path``.
+
+        Phase 4: provenance is runtime metadata and does not belong in
+        canonical XML (guard rail 5). Callers who want to persist a
+        rubric's lineage alongside its XML emit a sidecar JSON file via
+        this method. Raises ``ValueError`` if no provenance has been
+        attached — guard rail 6 forbids silent no-ops.
+        """
+        from pathlib import Path
+
+        if self.provenance is None:
+            raise ValueError(
+                f"Rubric {self.name!r} has no provenance to export; "
+                "attach a RubricProvenance before calling export_provenance"
+            )
+        payload = json.dumps(self.provenance.to_dict(), indent=2)
+        Path(path).write_text(payload, encoding="utf-8")
 
     def __or__(self, other: Rubric) -> Rubric:
         """Criteria union: merge two rubrics. Second wins on ID conflicts."""

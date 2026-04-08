@@ -25,6 +25,7 @@ from rubrify._meta_rubric import (
 from rubrify._mutations import (
     AddCriterion,
     AddDisqualifier,
+    AddMappingExample,
     AddPattern,
     AddSteeringConstraint,
     AdjustWeight,
@@ -51,12 +52,14 @@ from rubrify.calibration import (
     CalibrationReport,
     CalibrationResult,
     assert_calibration,
+    calibration_to_mutations,
     run_calibration_suite,
     run_meta_evaluator_self_calibration,
     summarize_report,
 )
 from rubrify.client import ChatClient, Client
 from rubrify.generate import generate, refine
+from rubrify.improve import ImproveReport, default_advice_extractor, improve_text
 from rubrify.input_render import (
     CandidateTextRenderer,
     ConversationJudgeRenderer,
@@ -65,6 +68,7 @@ from rubrify.input_render import (
     TemplateRenderer,
     validate_payload,
 )
+from rubrify.provenance import RefinementReport, RefinementStep, RubricProvenance
 from rubrify.repair import (
     RepairResult,
     attempt_schema_repair,
@@ -125,6 +129,7 @@ __all__ = [
     "AddPattern",
     "AddDisqualifier",
     "AddSteeringConstraint",
+    "AddMappingExample",
     "RubricMutation",
     "Client",
     "ChatClient",
@@ -165,4 +170,12 @@ __all__ = [
     "run_meta_evaluator_self_calibration",
     "COMPLIANCE_JUDGE_SUITE",
     "ANTI_SLOP_DISCRIMINANT_SUITE",
+    # Phase 4: provenance and lineage
+    "RefinementStep",
+    "RubricProvenance",
+    "RefinementReport",
+    "calibration_to_mutations",
+    "improve_text",
+    "ImproveReport",
+    "default_advice_extractor",
 ]

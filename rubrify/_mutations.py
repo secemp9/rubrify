@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from rubrify.rubric import Rubric
 
-from rubrify._types import Criterion, Disqualifier
+from rubrify._types import Criterion, Disqualifier, MappingExample
 
 
 @dataclass(slots=True)
@@ -80,6 +80,23 @@ class AddSteeringConstraint:
         return rubric
 
 
+@dataclass(slots=True)
+class AddMappingExample:
+    """Append a :class:`MappingExample` to a rubric's mapping examples list.
+
+    Used by ``calibration_to_mutations`` as a conservative structural fix:
+    when a compliance rubric fails an ``expected_verdict`` calibration case,
+    the bridge suggests scaffolding a new mapping example for that case so a
+    human or model can fill in the content. No content is invented.
+    """
+
+    example: MappingExample
+
+    def apply(self, rubric: Rubric) -> Rubric:
+        rubric.mapping_examples.append(self.example)
+        return rubric
+
+
 RubricMutation = (
     AddCriterion
     | RemoveCriterion
@@ -87,6 +104,7 @@ RubricMutation = (
     | AddPattern
     | AddDisqualifier
     | AddSteeringConstraint
+    | AddMappingExample
 )
 
 

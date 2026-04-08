@@ -18,10 +18,13 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from rubrify.result import ConstraintResult, EvaluationResult
 from rubrify.rubric import ConstraintRubric, Rubric
+
+if TYPE_CHECKING:
+    from rubrify._mutations import RubricMutation
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +76,10 @@ class CalibrationResult:
     META_EVALUATOR ordering invariants which compare multiple runs).
     ``expected_summary`` and ``actual_summary`` are short human-readable
     strings used by ``assert_calibration`` and ``summarize_report``.
+    ``case`` is the originating :class:`CalibrationCase` when the result came
+    from the regular suite runner; it is ``None`` for synthesized assertions
+    and lets downstream tools (e.g. ``calibration_to_mutations``) recover
+    the expected fields without re-parsing ``expected_summary``.
     """
 
     case_id: str
@@ -81,6 +88,7 @@ class CalibrationResult:
     expected_summary: str
     actual_summary: str
     notes: tuple[str, ...] = ()
+    case: CalibrationCase | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -230,6 +238,7 @@ def run_calibration_suite(
                 expected_summary=expected_summary,
                 actual_summary=actual_summary,
                 notes=notes,
+                case=case,
             )
         )
         if passed:
@@ -410,3 +419,118 @@ def run_meta_evaluator_self_calibration(client: Any, model: str) -> CalibrationR
         failed=failed_count,
         results=tuple(results),
     )
+
+
+# --- Calibration → mutations bridge ----------------------------------------
+
+
+def calibration_to_mutations(
+    rubric: Rubric,
+    report: CalibrationReport,
+) -> list[RubricMutation]:
+    """Map calibration failures to conservative structural mutations.
+
+    Phase 4 deliverable. Deterministic, LLM-free. Given a rubric and a
+    calibration report, propose a small set of *scaffold* mutations that a
+    human or model can fill with content later. No content is invented and
+    no calls are made to any model.
+
+    Rules (all conservative, all deduplicated):
+
+    * **Failing ``expected_verdict``** → suggest an
+      :class:`rubrify._mutations.AddMappingExample` whose scaffold uses a
+      placeholder ``user`` summary, an ``"(fill in)"`` assistant, and the
+      expected verdict verbatim.
+    * **Failing ``expected_band``** (detection rubric) with
+      ``rubric.pattern_library is None`` → suggest an
+      :class:`rubrify._mutations.AddPattern` skeleton named
+      ``pattern_<case.id>`` with a placeholder regex.
+    * **Failing ``expected_score_min/max``** with empty
+      ``rubric.scoring_guidance`` → suggest an
+      :class:`rubrify._mutations.AddSteeringConstraint` on a
+      ``scoring_guidance_reminder`` key.
+    * **Schema violation** (actual result ``repaired=True``) → suggest an
+      :class:`rubrify._mutations.AddSteeringConstraint` on a
+      ``schema_reminder`` key.
+
+    Returns an empty list when no structural fixes apply. Guard rail 6: the
+    caller can still inspect the report to see *which* cases failed. Guard
+    rail 8: no hypothetical future rules.
+    """
+    from rubrify._mutations import (
+        AddMappingExample,
+        AddPattern,
+        AddSteeringConstraint,
+    )
+    from rubrify._types import MappingExample
+
+    mutations: list[RubricMutation] = []
+    seen_mapping_ids: set[str] = set()
+    seen_pattern_ids: set[str] = set()
+    seen_steering_keys: set[str] = set()
+
+    for result in report.results:
+        if result.passed or result.case is None:
+            continue
+        case = result.case
+
+        schema_repaired = False
+        if isinstance(result.actual, EvaluationResult | ConstraintResult):
+            schema_repaired = result.actual.repaired
+
+        if schema_repaired and "schema_reminder" not in seen_steering_keys:
+            mutations.append(
+                AddSteeringConstraint(
+                    key="schema_reminder",
+                    value=(
+                        "(placeholder) remind the model to follow the declared "
+                        "output schema exactly; human fills in specifics."
+                    ),
+                )
+            )
+            seen_steering_keys.add("schema_reminder")
+
+        if case.expected_verdict is not None:
+            mapping_id = f"E_{case.id}"
+            if mapping_id not in seen_mapping_ids:
+                mutations.append(
+                    AddMappingExample(
+                        example=MappingExample(
+                            id=mapping_id,
+                            user=f"(placeholder) payload summary for case {case.id}",
+                            assistant="(fill in)",
+                            verdict=case.expected_verdict,
+                        )
+                    )
+                )
+                seen_mapping_ids.add(mapping_id)
+
+        if case.expected_band is not None and rubric.pattern_library is None:
+            pattern_id = f"pattern_{case.id}"
+            if pattern_id not in seen_pattern_ids:
+                mutations.append(
+                    AddPattern(
+                        pattern_id=pattern_id,
+                        pattern=r"(pattern placeholder)",
+                    )
+                )
+                seen_pattern_ids.add(pattern_id)
+
+        has_score_expectation = (
+            case.expected_score_min is not None or case.expected_score_max is not None
+        )
+        if has_score_expectation and not rubric.scoring_guidance:
+            key = "scoring_guidance_reminder"
+            if key not in seen_steering_keys:
+                mutations.append(
+                    AddSteeringConstraint(
+                        key=key,
+                        value=(
+                            "(placeholder) remind the model of the scoring "
+                            "guidance band boundaries; human fills in specifics."
+                        ),
+                    )
+                )
+                seen_steering_keys.add(key)
+
+    return mutations
