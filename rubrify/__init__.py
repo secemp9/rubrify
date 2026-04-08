@@ -1,5 +1,11 @@
 __version__ = "0.1.0"
 
+from rubrify._behaviors import CONSTRAINT_BEHAVIORS
+from rubrify._examples import (
+    COMPLETENESS_EXAMPLE,
+    EXTRACTION_EXAMPLE,
+    TRANSFORM_EXAMPLE,
+)
 from rubrify._meta_rubric import (
     COMPLIANCE_GENERATOR,
     COMPLIANCE_PROFILE,
@@ -52,7 +58,7 @@ from rubrify.repair import (
     extract_json_candidate,
     extract_xml_candidate,
 )
-from rubrify.result import EvaluationResult, EvaluationTrace
+from rubrify.result import ConstraintResult, EvaluationResult, EvaluationTrace
 from rubrify.rubric import ConstraintRubric, CoproductRubric, ProductRubric, Rubric
 
 
@@ -98,6 +104,7 @@ __all__ = [
     "ICLExample",
     "EvaluationResult",
     "EvaluationTrace",
+    "ConstraintResult",
     "ValidationResult",
     "AddCriterion",
     "RemoveCriterion",
@@ -130,4 +137,9 @@ __all__ = [
     "extract_json_candidate",
     "extract_xml_candidate",
     "attempt_schema_repair",
+    # Phase 2: constraint runtime
+    "CONSTRAINT_BEHAVIORS",
+    "COMPLETENESS_EXAMPLE",
+    "EXTRACTION_EXAMPLE",
+    "TRANSFORM_EXAMPLE",
 ]

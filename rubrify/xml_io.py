@@ -605,4 +605,53 @@ def constraint_rubric_to_xml(rubric: ConstraintRubric) -> str:
             out = ET.SubElement(e, "output")
             out.text = ex.output
 
+    # Phase 2: metadata-only behaviors tag. Emitted as a space-separated list
+    # of canonical values. Runtime never branches on this tag; it is purely
+    # documentation for the rubric's declared behavior families. See
+    # ``rubrify._behaviors`` for the taxonomy and reference citations.
+    if rubric.behaviors:
+        beh = ET.SubElement(root, "behaviors")
+        beh.text = " ".join(sorted(rubric.behaviors))
+
     return _pretty_print(root)
+
+
+def constraint_rubric_from_xml(xml_string: str) -> ConstraintRubric:
+    """Parse a ``<ConstraintRubric>`` XML string back into a ConstraintRubric.
+
+    Phase 2 addition. Round-trips the fields emitted by
+    :func:`constraint_rubric_to_xml`: name, instructions, output_format,
+    examples, and the optional ``<behaviors>`` metadata tag. Absent
+    ``<behaviors>`` defaults to an empty frozenset, matching Phase 1
+    behaviour.
+    """
+    from rubrify._types import ICLExample
+    from rubrify.rubric import ConstraintRubric
+
+    root = ET.fromstring(xml_string)
+    name = root.get("name", "")
+    instructions = _text(root.find("instructions"))
+    output_format = _text(root.find("output_format"))
+
+    examples: list[ICLExample] = []
+    exs_elem = root.find("examples")
+    if exs_elem is not None:
+        for ex_elem in exs_elem.findall("example"):
+            inp_text = _text(ex_elem.find("input"))
+            out_text = _text(ex_elem.find("output"))
+            examples.append(ICLExample(input=inp_text, output=out_text))
+
+    behaviors_elem = root.find("behaviors")
+    if behaviors_elem is not None and behaviors_elem.text:
+        tokens = [tok for tok in behaviors_elem.text.replace(",", " ").split() if tok]
+        behaviors: frozenset[str] = frozenset(tokens)
+    else:
+        behaviors = frozenset()
+
+    return ConstraintRubric(
+        name=name,
+        instructions=instructions,
+        output_format=output_format,
+        examples=examples,
+        behaviors=behaviors,
+    )

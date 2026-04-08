@@ -42,3 +42,21 @@ class EvaluationResult:
     repaired: bool = False
     repair_notes: tuple[str, ...] = ()
     trace: EvaluationTrace | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ConstraintResult:
+    """Outcome of a ``ConstraintRubric.apply_and_validate`` call.
+
+    Phase 2 deliverable. Carries the raw model ``output``, a ``valid`` flag,
+    the list of violation messages from failing validators, and optional
+    repair / observability metadata. The trace is populated only when the
+    caller requested ``observe=True``.
+    """
+
+    output: str
+    valid: bool
+    violations: tuple[str, ...] = ()
+    repaired: bool = False
+    repair_notes: tuple[str, ...] = ()
+    trace: EvaluationTrace | None = None

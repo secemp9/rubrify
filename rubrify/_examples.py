@@ -1,4 +1,22 @@
-"""Rubric XML excerpts used as few-shot examples in generators."""
+"""Rubric XML excerpts and canonical ConstraintRubric examples.
+
+This module hosts two kinds of examples:
+
+- **XML excerpts** (``ZINSSER_V3_EXCERPT`` et al.) — string constants used as
+  few-shot anchors by the meta-rubric generators in ``_meta_rubric.py``.
+
+- **Canonical ConstraintRubric instances** (``COMPLETENESS_EXAMPLE``,
+  ``EXTRACTION_EXAMPLE``, ``TRANSFORM_EXAMPLE``) — Phase 2 deliverable.
+  These are library-level, reference-derived ConstraintRubrics that
+  demonstrate the three non-scoring constraint behaviors the references
+  exhibit: forcing a specific output structure, extracting structured
+  entities, and rewriting input via a template. They exist so downstream
+  users can cite a concrete starting point for each behavior family.
+"""
+
+from rubrify._types import ICLExample
+from rubrify.input_render import TemplateRenderer
+from rubrify.rubric import ConstraintRubric
 
 ZINSSER_V3_EXCERPT = """\
 <LLM_JUDGE_SPEC version="3.0" name="ZinsserJudge-XXL">
@@ -154,3 +172,122 @@ COMPLIANCE_JUDGE_EXCERPT = """\
     </constraints>
   </output_schema>
 </LLM_JUDGE_SPEC>"""
+
+
+# ── Phase 2: canonical ConstraintRubric examples ───────────────────────
+#
+# These are reference-derived exemplars, one per non-scoring constraint
+# behaviour family. They compose multiple ``behaviors`` tags where the
+# reference pattern calls for it (e.g. completeness is both a ``force`` and
+# a ``transform``). ``behaviors`` is metadata only — the three instances
+# here execute through the exact same runtime path.
+
+COMPLETENESS_EXAMPLE: ConstraintRubric = ConstraintRubric(
+    name="CompletenessForcingExample",
+    instructions=(
+        "You are an assistant whose sole purpose is to provide all answers in valid XML. "
+        "Every response you give MUST be wrapped in a single, top-level <response> "
+        "element. Whenever code is requested or relevant, provide the full entire "
+        "complete updated code in a single <full_entire_complete_updated_code_in_a_code_block_here> "
+        "element inside <response>. Do not include any text outside the <response> element. "
+        "Always produce well-formed XML. Never truncate, omit, or abbreviate code. "
+        "Adapted from references/main/rubrics/special_ones/completeness_rubric.md."
+    ),
+    output_format=(
+        "<response>\n"
+        "  <full_entire_complete_updated_code_in_a_code_block_here>"
+        "<![CDATA[\n"
+        "...complete code here...\n"
+        "]]></full_entire_complete_updated_code_in_a_code_block_here>\n"
+        "</response>"
+    ),
+    examples=[
+        ICLExample(
+            input='Show me a short snippet of Python code that prints "Hello World".',
+            output=(
+                "<response>\n"
+                "  <full_entire_complete_updated_code_in_a_code_block_here>"
+                "<![CDATA[\n"
+                'print("Hello World")\n'
+                "]]></full_entire_complete_updated_code_in_a_code_block_here>\n"
+                "</response>"
+            ),
+        ),
+    ],
+    behaviors=frozenset({"force", "transform"}),
+)
+"""Completeness-style forcing ConstraintRubric.
+
+Mirrors ``references/main/rubrics/special_ones/completeness_rubric.md``:
+forces every response into a ``<response>`` wrapper with a
+``<full_entire_complete_updated_code_in_a_code_block_here>`` child carrying
+the full, unabridged code. Declared behaviors: ``force`` and ``transform``.
+"""
+
+EXTRACTION_EXAMPLE: ConstraintRubric = ConstraintRubric(
+    name="StructuredExtractionExample",
+    instructions=(
+        "Extract structured entities from the provided unstructured text. "
+        "Return a single JSON object with exactly these keys: "
+        '"people" (list of strings), "organizations" (list of strings), '
+        '"dates" (list of strings in ISO-8601 where possible), and '
+        '"locations" (list of strings). '
+        "Do not include any prose, commentary, or keys not listed above. "
+        "If a category has no entries, return an empty list for that key."
+    ),
+    output_format='{"people": [...], "organizations": [...], "dates": [...], "locations": [...]}',
+    examples=[
+        ICLExample(
+            input=(
+                "On 2024-03-15, Ada Lovelace met with engineers from Analytical "
+                "Machines Ltd in London to review the new design."
+            ),
+            output=(
+                '{"people": ["Ada Lovelace"], '
+                '"organizations": ["Analytical Machines Ltd"], '
+                '"dates": ["2024-03-15"], '
+                '"locations": ["London"]}'
+            ),
+        ),
+    ],
+    behaviors=frozenset({"extract"}),
+)
+"""Structured-extraction ConstraintRubric.
+
+Pulls people, organizations, dates, and locations out of unstructured text
+into a flat JSON object. Declared behavior: ``extract``.
+"""
+
+TRANSFORM_EXAMPLE: ConstraintRubric = ConstraintRubric(
+    name="TransformationTemplateExample",
+    instructions=(
+        "Rewrite the user's content in the requested target style while "
+        "preserving the original meaning. Respond with only the rewritten "
+        "text — no preface, no quotes, no commentary."
+    ),
+    output_format="<rewritten text only>",
+    examples=[
+        ICLExample(
+            input=(
+                "Rewrite the following content in the style of plain, "
+                "reader-respecting nonfiction prose:\n\n"
+                "At this point in time, we are in the process of conducting "
+                "an evaluation of the matter."
+            ),
+            output="We are evaluating the matter.",
+        ),
+    ],
+    behaviors=frozenset({"transform"}),
+)
+"""Transformation ConstraintRubric that uses ``TemplateRenderer``.
+
+The template substitutes ``{style}`` and ``{content}`` placeholders into a
+prompt that asks the model to rewrite ``{content}`` in ``{style}``. Callers
+supply those fields in the payload passed to ``apply``. Declared behavior:
+``transform``.
+"""
+
+TRANSFORM_EXAMPLE.input_renderer = TemplateRenderer(
+    template=("Rewrite the following content in the style of {style}:\n\n{content}"),
+    placeholders=("style", "content"),
+)

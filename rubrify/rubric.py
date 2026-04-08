@@ -19,10 +19,11 @@ from rubrify._types import (
     Scoring,
     ValidationMust,
 )
-from rubrify.result import EvaluationResult, EvaluationTrace
+from rubrify.result import ConstraintResult, EvaluationResult, EvaluationTrace
 
 if TYPE_CHECKING:
     from rubrify.input_render import InputRenderer
+    from rubrify.repair import RepairResult
 
 
 def _infer_parser_kind(schema: OutputSchema | None) -> str:
@@ -318,7 +319,20 @@ class Rubric:
 
 
 class ConstraintRubric:
-    """Behavioral constraint rubric (no scoring). Uses instructions + ICL examples."""
+    """Behavioral constraint rubric (no scoring). Uses instructions + ICL examples.
+
+    Phase 2 enrichment: carries a ``behaviors`` frozenset of metadata tags
+    (``judge``, ``score``, ``detect``, ``force``, ``transform``, ``extract``,
+    ``calibrate``) describing what the rubric *claims* to do, and a list of
+    local ``validators`` that can post-hoc check the raw model output.
+
+    **``behaviors`` is metadata only.** Behaviors compose — a rubric may carry
+    any subset of the seven canonical values (see ``rubrify._behaviors`` for
+    the full taxonomy and reference citations). Guard rail 3 of
+    ``PHILOSOPHY.md`` is binding: the runtime never branches on ``behaviors``.
+    Two rubrics that differ only in their ``behaviors`` frozenset execute
+    through identical code paths.
+    """
 
     def __init__(
         self,
@@ -326,12 +340,21 @@ class ConstraintRubric:
         instructions: str = "",
         output_format: str = "",
         examples: list[ICLExample] | None = None,
+        *,
+        behaviors: frozenset[str] = frozenset(),
+        validators: list[Callable[[str], tuple[bool, str | None]]] | None = None,
     ) -> None:
         self.name = name
         self.instructions = instructions
         self.output_format = output_format
         self.examples: list[ICLExample] = examples or []
         self.input_renderer: InputRenderer | None = None  # Phase 1: optional renderer
+        # Phase 2: metadata-only behavior tags; never drives dispatch.
+        self.behaviors: frozenset[str] = behaviors
+        # Phase 2: local structural validators run on the raw model output.
+        self.validators: list[Callable[[str], tuple[bool, str | None]]] = (
+            list(validators) if validators is not None else []
+        )
 
     @overload
     def apply(
@@ -419,6 +442,113 @@ class ConstraintRubric:
             return parsed, trace
 
         return parsed
+
+    def validate_output(self, output: str) -> tuple[bool, list[str]]:
+        """Run every registered validator on ``output`` and aggregate violations.
+
+        Each validator returns ``(is_valid, message | None)``. Returns
+        ``(all_valid, violations)`` where ``violations`` is the list of
+        non-``None`` messages collected from failing validators. If no
+        validators are registered the call returns ``(True, [])``.
+        """
+        violations: list[str] = []
+        for validator in self.validators:
+            is_valid, message = validator(output)
+            if not is_valid:
+                violations.append(message if message is not None else "validation failed")
+        return (len(violations) == 0, violations)
+
+    def apply_and_validate(
+        self,
+        text: str,
+        *,
+        client: Any,
+        model: str,
+        repair: bool = False,
+        observe: bool = False,
+        **kwargs: Any,
+    ) -> ConstraintResult:
+        """Apply the rubric and run ``self.validators`` on the raw model output.
+
+        Returns a :class:`ConstraintResult` with ``output``, ``valid``,
+        ``violations``, and (when ``observe=True``) ``trace`` populated.
+        Validators operate on the raw string output; ``parse_as`` is therefore
+        not accepted here. Callers who need parsed payloads should use
+        :meth:`apply` directly.
+        """
+        if "parse_as" in kwargs:
+            raise TypeError(
+                "apply_and_validate does not accept parse_as; validators run on the raw output"
+            )
+
+        trace: EvaluationTrace | None = None
+        if observe:
+            applied = self.apply(
+                text,
+                client=client,
+                model=model,
+                repair=repair,
+                observe=True,
+                **kwargs,
+            )
+            output_value, trace = applied
+        else:
+            output_value = self.apply(
+                text,
+                client=client,
+                model=model,
+                repair=repair,
+                observe=False,
+                **kwargs,
+            )
+
+        if not isinstance(output_value, str):
+            raise TypeError(
+                "apply_and_validate expects ConstraintRubric.apply to return a string; "
+                f"got {type(output_value).__name__}"
+            )
+
+        valid, violations = self.validate_output(output_value)
+        return ConstraintResult(
+            output=output_value,
+            valid=valid,
+            violations=tuple(violations),
+            trace=trace,
+        )
+
+    def apply_with_repair(
+        self,
+        text: str,
+        *,
+        client: Any,
+        model: str,
+        repair_fn: Callable[[str], RepairResult] | None = None,
+        **kwargs: Any,
+    ) -> ConstraintResult:
+        """Apply, validate, and optionally run a *local* repair function on failure.
+
+        If validation passes, the initial :class:`ConstraintResult` is returned
+        unchanged. If validation fails and ``repair_fn`` is provided, the
+        function is called with the raw output and must return a
+        :class:`rubrify.repair.RepairResult`. The repaired text is revalidated
+        and a new :class:`ConstraintResult` is returned with ``repaired`` and
+        ``repair_notes`` populated from the repair result. ``repair_fn`` is
+        strictly local — no model-assisted repair.
+        """
+        initial = self.apply_and_validate(text, client=client, model=model, **kwargs)
+        if initial.valid or repair_fn is None:
+            return initial
+
+        repaired = repair_fn(initial.output)
+        revalid, reviolations = self.validate_output(repaired.text)
+        return ConstraintResult(
+            output=repaired.text,
+            valid=revalid,
+            violations=tuple(reviolations),
+            repaired=repaired.repaired,
+            repair_notes=repaired.notes,
+            trace=initial.trace,
+        )
 
     def to_xml(self) -> str:
         """Serialize to XML system prompt format."""
