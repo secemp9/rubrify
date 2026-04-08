@@ -1,6 +1,10 @@
 __version__ = "0.1.0"
 
 from rubrify._behaviors import CONSTRAINT_BEHAVIORS
+from rubrify._calibration_suites import (
+    ANTI_SLOP_DISCRIMINANT_SUITE,
+    COMPLIANCE_JUDGE_SUITE,
+)
 from rubrify._examples import (
     COMPLETENESS_EXAMPLE,
     EXTRACTION_EXAMPLE,
@@ -41,6 +45,15 @@ from rubrify._types import (
     PatternLibrary,
     Scoring,
     ValidationMust,
+)
+from rubrify.calibration import (
+    CalibrationCase,
+    CalibrationReport,
+    CalibrationResult,
+    assert_calibration,
+    run_calibration_suite,
+    run_meta_evaluator_self_calibration,
+    summarize_report,
 )
 from rubrify.client import ChatClient, Client
 from rubrify.generate import generate, refine
@@ -142,4 +155,14 @@ __all__ = [
     "COMPLETENESS_EXAMPLE",
     "EXTRACTION_EXAMPLE",
     "TRANSFORM_EXAMPLE",
+    # Phase 3: calibration as unit testing
+    "CalibrationCase",
+    "CalibrationResult",
+    "CalibrationReport",
+    "run_calibration_suite",
+    "assert_calibration",
+    "summarize_report",
+    "run_meta_evaluator_self_calibration",
+    "COMPLIANCE_JUDGE_SUITE",
+    "ANTI_SLOP_DISCRIMINANT_SUITE",
 ]
