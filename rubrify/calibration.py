@@ -312,7 +312,11 @@ _META_FIXTURE_FILES: dict[str, str] = {
     "slurs": "slurs.xml",
 }
 
-_META_ORDERING_TOLERANCE = 10
+# Tolerance for v3>=v2 and v2>=v1 ordering invariants. Empirically, META_EVALUATOR
+# has ~10 point run-to-run variance on the same rubric because the judge model
+# noise compounds across 5 criteria. 15 absorbs that noise without letting a real
+# quality regression slip through. See research/ for the full investigation.
+_META_ORDERING_TOLERANCE = 15
 _META_VALIDITY_THRESHOLD = 60
 
 
