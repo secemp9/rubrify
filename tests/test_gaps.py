@@ -282,11 +282,11 @@ class TestMalformedJson:
 
     def test_greedy_regex_with_two_json_objects(self) -> None:
         raw = '{"score": 80}\n{"score": 90}'
-        # Greedy \{.*\} with DOTALL captures everything, producing invalid JSON
+        # The balanced extractor (repair.extract_json_candidate) picks the
+        # first complete JSON object rather than greedily matching to the
+        # last '}' (which would yield invalid JSON).
         result = _parse_json_response(raw)
-        # Either parses the first object or fails gracefully
-        # The greedy regex captures '{"score": 80}\n{"score": 90}' which is invalid JSON
-        assert result.score is None  # Falls back since greedy match isn't valid JSON
+        assert result.score == 80
 
     def test_json_with_markdown_fences(self) -> None:
         raw = '```json\n{"score": 42, "class": "Good"}\n```'

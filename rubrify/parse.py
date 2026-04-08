@@ -84,15 +84,22 @@ def parse_response(
 def _parse_json_response(raw: str) -> EvaluationResult:
     """Parse JSON response from scoring/detection rubrics.
 
+    Uses the repair layer's ``extract_json_candidate`` to handle code
+    fences, prose wrappers, and stray braces cleanly (balanced matching
+    rather than greedy regex).
+
     Unknown top-level keys are preserved under ``result.extras`` verbatim.
     """
-    json_match = re.search(r"\{.*\}", raw, re.DOTALL)
-    if not json_match:
+    from rubrify.repair import extract_json_candidate
+
+    extraction = extract_json_candidate(raw)
+    try:
+        data = json.loads(extraction.text)
+    except json.JSONDecodeError:
         return EvaluationResult(raw=raw)
 
-    try:
-        data = json.loads(json_match.group())
-    except json.JSONDecodeError:
+    if not isinstance(data, dict):
+        # Could be a top-level list; treat as unparseable for EvaluationResult.
         return EvaluationResult(raw=raw)
 
     extras: dict[str, Any] = {
