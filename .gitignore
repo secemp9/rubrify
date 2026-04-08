@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Environment
+.env
+.env.local
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# Project-specific
+.mcp_data/
+/tmp/
+/references/
+test_real.py
+test_deep.py
+test_build.py
+/generated_rubric.xml
+
+# OS
+.DS_Store
+Thumbs.db
