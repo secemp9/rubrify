@@ -1,7 +1,10 @@
 """Tests for evaluate/apply integration with mocked LLM client."""
 
 import json
+import warnings
 from pathlib import Path
+
+import pytest
 
 import rubrify
 from rubrify._types import Criterion, ICLExample, OutputSchema, Scoring
@@ -288,3 +291,122 @@ class TestCoproductRubricEvaluate:
         client = MockClient(response)
         coprod.evaluate("any text", client=client, model="m")
         assert "B eval." in client.last_messages[0]["content"]
+
+
+def _make_scoring_rubric() -> rubrify.Rubric:
+    r = rubrify.Rubric(name="Test", mission="Test.")
+    r.add_criterion(Criterion(id="C1", name="X", weight=100, anchors={0: "a", 5: "b"}))
+    r.output_schema = OutputSchema(constraints={"must_be_json": True})
+    return r
+
+
+class TestEvaluateWarnUnsupported:
+    """Phase 5: ``Rubric.evaluate(warn_unsupported=True)`` integration."""
+
+    def test_evaluate_warn_unsupported_false_default(self) -> None:
+        """The default path emits no model-policy warning regardless of model name."""
+        r = _make_scoring_rubric()
+        client = MockClient(json.dumps({"score": 50}))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            r.evaluate("text", client=client, model="mistral-large")
+
+    def test_evaluate_warn_unsupported_true_recommended(self) -> None:
+        """A recommended model produces no warning even with opt-in enabled."""
+        r = _make_scoring_rubric()
+        client = MockClient(json.dumps({"score": 50}))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            r.evaluate(
+                "text",
+                client=client,
+                model="claude-sonnet-4-6",
+                warn_unsupported=True,
+            )
+
+    def test_evaluate_warn_unsupported_true_supported(self) -> None:
+        """A supported model also produces no warning with opt-in enabled."""
+        r = _make_scoring_rubric()
+        client = MockClient(json.dumps({"score": 50}))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            r.evaluate(
+                "text",
+                client=client,
+                model="gpt-4",
+                warn_unsupported=True,
+            )
+
+    def test_evaluate_warn_unsupported_true_experimental(self) -> None:
+        r = _make_scoring_rubric()
+        client = MockClient(json.dumps({"score": 50}))
+        with pytest.warns(UserWarning, match="rubrify model policy"):
+            r.evaluate(
+                "text",
+                client=client,
+                model="mistral-large",
+                warn_unsupported=True,
+            )
+
+    def test_evaluate_warn_unsupported_true_discouraged(self) -> None:
+        r = _make_scoring_rubric()
+        client = MockClient(json.dumps({"score": 50}))
+        with pytest.warns(UserWarning, match="discouraged"):
+            r.evaluate(
+                "text",
+                client=client,
+                model="text-davinci-003",
+                warn_unsupported=True,
+            )
+
+    def test_evaluate_warn_unsupported_true_unknown(self) -> None:
+        r = _make_scoring_rubric()
+        client = MockClient(json.dumps({"score": 50}))
+        with pytest.warns(UserWarning, match="not in the policy"):
+            r.evaluate(
+                "text",
+                client=client,
+                model="totally-unknown-model",
+                warn_unsupported=True,
+            )
+
+
+class TestConstraintRubricApplyWarnUnsupported:
+    """Phase 5: ``ConstraintRubric.apply(warn_unsupported=True)`` integration."""
+
+    def _make_rubric(self) -> rubrify.ConstraintRubric:
+        return rubrify.ConstraintRubric(
+            name="TestGen",
+            instructions="Generate.",
+            output_format="",
+        )
+
+    def test_apply_warn_unsupported_false_default(self) -> None:
+        cr = self._make_rubric()
+        client = MockClient("ok")
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            cr.apply("input", client=client, model="mistral-large")
+
+    def test_apply_warn_unsupported_true_recommended(self) -> None:
+        cr = self._make_rubric()
+        client = MockClient("ok")
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            cr.apply(
+                "input",
+                client=client,
+                model="claude-sonnet-4-6",
+                warn_unsupported=True,
+            )
+
+    def test_apply_warn_unsupported_true_experimental(self) -> None:
+        cr = self._make_rubric()
+        client = MockClient("ok")
+        with pytest.warns(UserWarning, match="rubrify model policy"):
+            cr.apply(
+                "input",
+                client=client,
+                model="mistral-large",
+                warn_unsupported=True,
+            )

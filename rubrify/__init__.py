@@ -58,7 +58,16 @@ from rubrify.calibration import (
     summarize_report,
 )
 from rubrify.client import ChatClient, Client
-from rubrify.generate import generate, refine
+from rubrify.generate import (
+    generate,
+    generate_classifier,
+    generate_constraint,
+    generate_detector,
+    generate_evaluator,
+    generate_from_examples,
+    generate_transformer,
+    refine,
+)
 from rubrify.improve import ImproveReport, default_advice_extractor, improve_text
 from rubrify.input_render import (
     CandidateTextRenderer,
@@ -67,6 +76,15 @@ from rubrify.input_render import (
     PassthroughRenderer,
     TemplateRenderer,
     validate_payload,
+)
+from rubrify.model_policy import (
+    DISCOURAGED,
+    EXPERIMENTAL,
+    RECOMMENDED,
+    SUPPORTED,
+    ModelTier,
+    check_model,
+    warn_unsupported,
 )
 from rubrify.provenance import RefinementReport, RefinementStep, RubricProvenance
 from rubrify.repair import (
@@ -178,4 +196,19 @@ __all__ = [
     "improve_text",
     "ImproveReport",
     "default_advice_extractor",
+    # Phase 5: model policy
+    "ModelTier",
+    "check_model",
+    "warn_unsupported",
+    "RECOMMENDED",
+    "SUPPORTED",
+    "EXPERIMENTAL",
+    "DISCOURAGED",
+    # Phase 5: behavior-oriented generation helpers
+    "generate_evaluator",
+    "generate_detector",
+    "generate_classifier",
+    "generate_constraint",
+    "generate_transformer",
+    "generate_from_examples",
 ]

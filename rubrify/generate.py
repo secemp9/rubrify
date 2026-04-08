@@ -12,9 +12,10 @@ from rubrify._meta_rubric import (
 )
 from rubrify._mutations import RubricMutation
 from rubrify._properties import validate
+from rubrify._types import ICLExample
 from rubrify.provenance import RefinementReport, RefinementStep, RubricProvenance
 from rubrify.result import EvaluationResult
-from rubrify.rubric import Rubric
+from rubrify.rubric import ConstraintRubric, Rubric
 
 _GENERATORS = {
     "scoring": SCORING_GENERATOR,
@@ -72,6 +73,7 @@ def generate(
     max_attempts: int = 1,
     repair_invalid_xml: bool = True,
     return_report: bool = False,
+    warn_unsupported: bool = False,
     **kwargs: Any,
 ) -> Rubric | tuple[Rubric, EvaluationResult] | tuple[Rubric, RefinementReport]:
     """Generate a rubric from source material using the any2rubric pipeline.
@@ -97,6 +99,11 @@ def generate(
     the legacy ``evaluate=True`` tuple return.
     """
     import rubrify
+
+    if warn_unsupported:
+        from rubrify.model_policy import warn_unsupported as _warn_unsupported
+
+        _warn_unsupported(model)
 
     generator = _GENERATORS.get(rubric_type)
     if generator is None:
@@ -378,3 +385,157 @@ def _suggest_mutations(
             )
 
     return mutations
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: behavior-oriented generation helpers
+# ---------------------------------------------------------------------------
+#
+# These helpers expose the rubric-behavior families named in PHILOSOPHY.md
+# anchor 2 ("roleplaying == jailbreak == context following == rubrics") as
+# concrete entry points. The split is deliberate and documented:
+#
+#   * ``generate_evaluator``, ``generate_detector``, ``generate_classifier``
+#     are thin wrappers around :func:`generate` and DO call the LLM. They
+#     route to the existing ``SCORING_GENERATOR`` / ``DETECTION_GENERATOR`` /
+#     ``COMPLIANCE_GENERATOR`` profiles and return a full-fledged
+#     :class:`rubrify.rubric.Rubric` (or the same tuple shapes that
+#     :func:`generate` produces when ``return_report=True`` or
+#     ``evaluate=True``).
+#
+#   * ``generate_constraint``, ``generate_transformer``, and
+#     ``generate_from_examples`` are pure Python construction helpers. They
+#     do NOT call the LLM. The "generation" here is building a
+#     :class:`rubrify.rubric.ConstraintRubric` from user-supplied
+#     instructions, examples, and templates. Guard rail 1 (no abstraction
+#     without a reference) keeps these thin — they are the obvious
+#     one-liners a user would otherwise copy into their own code.
+
+
+def generate_evaluator(
+    source: str,
+    *,
+    client: Any,
+    model: str,
+    **kwargs: Any,
+) -> Rubric | tuple[Rubric, EvaluationResult] | tuple[Rubric, RefinementReport]:
+    """Generate a scoring rubric (evaluator behavior).
+
+    Thin wrapper around :func:`generate` with ``rubric_type="scoring"``.
+    This helper DOES call the LLM: the scoring-generator meta-rubric is
+    applied to ``source`` to author the XML ``<LLM_JUDGE_SPEC>``.
+    """
+    return generate(source, client=client, model=model, rubric_type="scoring", **kwargs)
+
+
+def generate_detector(
+    source: str,
+    *,
+    client: Any,
+    model: str,
+    **kwargs: Any,
+) -> Rubric | tuple[Rubric, EvaluationResult] | tuple[Rubric, RefinementReport]:
+    """Generate a detection rubric (detector behavior with inverted scoring).
+
+    Thin wrapper around :func:`generate` with ``rubric_type="detection"``.
+    This helper DOES call the LLM.
+    """
+    return generate(source, client=client, model=model, rubric_type="detection", **kwargs)
+
+
+def generate_classifier(
+    source: str,
+    *,
+    client: Any,
+    model: str,
+    **kwargs: Any,
+) -> Rubric | tuple[Rubric, EvaluationResult] | tuple[Rubric, RefinementReport]:
+    """Generate a compliance-style classification rubric (judge behavior).
+
+    Thin wrapper around :func:`generate` with ``rubric_type="compliance"``.
+    This helper DOES call the LLM.
+    """
+    return generate(source, client=client, model=model, rubric_type="compliance", **kwargs)
+
+
+def generate_constraint(
+    instructions: str,
+    *,
+    output_format: str = "",
+    examples: list[ICLExample] | None = None,
+    name: str = "",
+    behaviors: frozenset[str] = frozenset({"force"}),
+) -> ConstraintRubric:
+    """Build a :class:`ConstraintRubric` from instructions and examples.
+
+    This is a Python construction helper, NOT an LLM call. The instructions
+    and examples are provided directly by the caller and wrapped into a
+    :class:`ConstraintRubric`. ``behaviors`` is metadata-only per guard
+    rail 3 and defaults to ``frozenset({"force"})`` because forcing is the
+    canonical constraint behavior from
+    ``references/main/rubrics/special_ones/completeness_rubric.md``.
+    """
+    return ConstraintRubric(
+        name=name,
+        instructions=instructions,
+        output_format=output_format,
+        examples=examples or [],
+        behaviors=behaviors,
+    )
+
+
+def generate_transformer(
+    instructions: str,
+    *,
+    template: str = "",
+    placeholders: tuple[str, ...] = ("content",),
+    examples: list[ICLExample] | None = None,
+    name: str = "",
+) -> ConstraintRubric:
+    """Build a transformation :class:`ConstraintRubric` with a
+    :class:`~rubrify.input_render.TemplateRenderer`.
+
+    This is a Python construction helper, NOT an LLM call. When
+    ``template`` is non-empty a ``TemplateRenderer`` is attached so the
+    user message is built via ``{placeholder}`` substitution at evaluation
+    time. ``behaviors`` is always ``frozenset({"transform"})``.
+    """
+    from rubrify.input_render import TemplateRenderer
+
+    rubric = ConstraintRubric(
+        name=name,
+        instructions=instructions,
+        output_format="",
+        examples=examples or [],
+        behaviors=frozenset({"transform"}),
+    )
+    if template:
+        rubric.input_renderer = TemplateRenderer(
+            template=template,
+            placeholders=placeholders,
+        )
+    return rubric
+
+
+def generate_from_examples(
+    task_description: str,
+    examples: list[ICLExample],
+    *,
+    name: str = "",
+    behaviors: frozenset[str] = frozenset({"extract"}),
+) -> ConstraintRubric:
+    """Build a :class:`ConstraintRubric` driven primarily by ICL examples.
+
+    This is a Python construction helper, NOT an LLM call. The
+    ``task_description`` becomes ``instructions`` and the provided
+    ``examples`` list is passed through unchanged. Default behavior tag is
+    ``frozenset({"extract"})`` because extraction is the canonical
+    example-driven rubric family.
+    """
+    return ConstraintRubric(
+        name=name,
+        instructions=task_description,
+        output_format="",
+        examples=examples,
+        behaviors=behaviors,
+    )

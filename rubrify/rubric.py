@@ -188,12 +188,18 @@ class Rubric:
         model: str,
         repair: bool = False,
         observe: bool = False,
+        warn_unsupported: bool = False,
         **kwargs: Any,
     ) -> EvaluationResult:
         import dataclasses
 
         from rubrify.input_render import CandidateTextRenderer, validate_payload
         from rubrify.parse import parse_response
+
+        if warn_unsupported:
+            from rubrify.model_policy import warn_unsupported as _warn_unsupported
+
+            _warn_unsupported(model)
 
         system_msg = self.to_xml()
 
@@ -388,6 +394,7 @@ class ConstraintRubric:
         parse_as: str | None = ...,
         repair: bool = ...,
         observe: Literal[False] = ...,
+        warn_unsupported: bool = ...,
         **kwargs: Any,
     ) -> str | dict[str, Any]: ...
 
@@ -401,6 +408,7 @@ class ConstraintRubric:
         parse_as: str | None = ...,
         repair: bool = ...,
         observe: Literal[True],
+        warn_unsupported: bool = ...,
         **kwargs: Any,
     ) -> tuple[str | dict[str, Any], EvaluationTrace]: ...
 
@@ -413,8 +421,14 @@ class ConstraintRubric:
         parse_as: str | None = None,
         repair: bool = False,
         observe: bool = False,
+        warn_unsupported: bool = False,
         **kwargs: Any,
     ) -> str | dict[str, Any] | tuple[str | dict[str, Any], EvaluationTrace]:
+        if warn_unsupported:
+            from rubrify.model_policy import warn_unsupported as _warn_unsupported
+
+            _warn_unsupported(model)
+
         system_msg = self.to_xml()
 
         if self.input_renderer is not None:
