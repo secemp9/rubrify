@@ -6,16 +6,18 @@ red-team conversation judging, template-based transformation) without hardcoding
 any particular layout inside ``Rubric.evaluate``.
 
 No renderer branches on metadata. Each renderer is a small dataclass with a
-single ``render`` method and explicit fields. All XML escaping is done via
-``xml.sax.saxutils.escape``. No silent fallbacks: missing required input fields
-raise ``ValueError`` via ``validate_payload``.
+single ``render`` method and explicit fields. XML construction uses
+``xml.etree.ElementTree`` where possible; ``TemplateRenderer`` uses
+``xml.sax.saxutils.escape`` for value substitution into free-form templates.
+No silent fallbacks: missing required input fields raise ``ValueError`` via
+``validate_payload``.
 """
 
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
-from xml.sax.saxutils import escape as xml_escape
 
 from rubrify._types import InputField
 
@@ -45,12 +47,14 @@ class CandidateTextRenderer:
         main_text = payload.get("text")
         if main_text is None:
             main_text = payload.get(self.field_name, "")
-        escaped_main = xml_escape(str(main_text))
-        parts: list[str] = [f"<{self.field_name}>{escaped_main}</{self.field_name}>"]
+        elem = ET.Element(self.field_name)
+        elem.text = str(main_text)
+        parts: list[str] = [ET.tostring(elem, encoding="unicode", short_empty_elements=False)]
         for key in self.extra_fields:
             if key in payload:
-                escaped = xml_escape(str(payload[key]))
-                parts.append(f"<{key}>{escaped}</{key}>")
+                child = ET.Element(key)
+                child.text = str(payload[key])
+                parts.append(ET.tostring(child, encoding="unicode", short_empty_elements=False))
         return "\n".join(parts)
 
 
@@ -75,18 +79,23 @@ class ConversationJudgeRenderer:
     assistant_field: str = "model_response"
 
     def render(self, payload: dict[str, Any]) -> str:
-        user_turn = xml_escape(str(payload.get(self.user_field, "")))
-        model_response = xml_escape(str(payload.get(self.assistant_field, "")))
-        return (
-            "<Query>\n"
-            f"{self.query_template}\n"
-            "</Query>\n"
-            "\n"
-            "<Conversation>\n"
-            f"<User_turn>{user_turn}</User_turn>\n"
-            f"<Model_Response>{model_response}</Model_Response>\n"
-            "</Conversation>"
-        )
+        query = ET.Element("Query")
+        query.text = "\n" + self.query_template + "\n"
+
+        conversation = ET.Element("Conversation")
+        conversation.text = "\n"
+
+        user_turn = ET.SubElement(conversation, "User_turn")
+        user_turn.text = str(payload.get(self.user_field, ""))
+        user_turn.tail = "\n"
+
+        model_response = ET.SubElement(conversation, "Model_Response")
+        model_response.text = str(payload.get(self.assistant_field, ""))
+        model_response.tail = "\n"
+
+        query_str = ET.tostring(query, encoding="unicode", short_empty_elements=False)
+        conv_str = ET.tostring(conversation, encoding="unicode", short_empty_elements=False)
+        return query_str + "\n\n" + conv_str
 
 
 @dataclass(slots=True)
@@ -101,6 +110,8 @@ class TemplateRenderer:
     placeholders: tuple[str, ...] = ("content",)
 
     def render(self, payload: dict[str, Any]) -> str:
+        from xml.sax.saxutils import escape as xml_escape
+
         result = self.template
         for name in self.placeholders:
             token = "{" + name + "}"

@@ -210,7 +210,9 @@ def extract_xml_candidate(raw: str, required_tags: tuple[str, ...] = ()) -> Repa
             pattern = rf"<{re.escape(tag)}\b[^>]*>(.*?)</{re.escape(tag)}>"
             m = re.search(pattern, raw, flags=re.DOTALL | re.IGNORECASE)
             if m:
-                recovered.append(f"<{tag}>{m.group(1).strip()}</{tag}>")
+                elem = ET.Element(tag)
+                elem.text = m.group(1).strip()
+                recovered.append(ET.tostring(elem, encoding="unicode", short_empty_elements=False))
                 found.append(tag)
         if recovered:
             return RepairResult(
