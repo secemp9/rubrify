@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import json
 import re
@@ -81,32 +82,79 @@ def parse_response(
     return result
 
 
-def _parse_json_response(raw: str) -> EvaluationResult:
+def _parse_json_response(raw: str, *, repair: bool = False) -> EvaluationResult:
     """Parse JSON response from scoring/detection rubrics.
 
-    Uses the repair layer's ``extract_json_candidate`` to handle code
-    fences, prose wrappers, and stray braces cleanly (balanced matching
-    rather than greedy regex).
+    Two paths controlled by ``repair``:
+
+    * ``repair=False`` (default): try ``json.loads(raw)`` directly. If that
+      fails, use ``json.JSONDecoder().raw_decode()`` to find the first valid
+      JSON object in the string — this is a standard JSON parsing strategy,
+      not repair. If that also fails, return ``EvaluationResult(raw=raw)``
+      (``score=None`` + ``raw`` populated indicates parse failure).
+
+    * ``repair=True``: use the repair layer's ``extract_json_candidate``
+      which handles code fences, prose wrappers, and balanced-brace
+      matching. When salvage occurs, ``repaired=True`` and
+      ``repair_notes`` are set on the result.
 
     Unknown top-level keys are preserved under ``result.extras`` verbatim.
     """
-    from rubrify.repair import extract_json_candidate
+    repaired = False
+    repair_notes: tuple[str, ...] = ()
 
-    extraction = extract_json_candidate(raw)
-    try:
-        data = json.loads(extraction.text)
-    except json.JSONDecodeError:
-        return EvaluationResult(raw=raw)
+    if repair:
+        from rubrify.repair import extract_json_candidate
+
+        extraction = extract_json_candidate(raw)
+        repaired = extraction.repaired
+        repair_notes = extraction.notes
+        text = extraction.text
+    else:
+        text = raw
+
+    # Try direct parse first.
+    data = None
+    with contextlib.suppress(json.JSONDecodeError):
+        data = json.loads(text)
+
+    # If direct parse failed and we're not in repair mode, try raw_decode
+    # to find the first valid JSON object in the string.
+    if data is None and not repair:
+        try:
+            decoder = json.JSONDecoder()
+            # Scan forward to the first '{' character.
+            idx = text.find("{")
+            if idx >= 0:
+                data, _ = decoder.raw_decode(text, idx)
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    if data is None:
+        result = EvaluationResult(raw=raw)
+        if repair:
+            result = dataclasses.replace(
+                result,
+                repaired=repaired,
+                repair_notes=repair_notes,
+            )
+        return result
 
     if not isinstance(data, dict):
-        # Could be a top-level list; treat as unparseable for EvaluationResult.
-        return EvaluationResult(raw=raw)
+        result = EvaluationResult(raw=raw)
+        if repair:
+            result = dataclasses.replace(
+                result,
+                repaired=repaired,
+                repair_notes=repair_notes,
+            )
+        return result
 
     extras: dict[str, Any] = {
         key: value for key, value in data.items() if key not in _KNOWN_JSON_KEYS
     }
 
-    return EvaluationResult(
+    result = EvaluationResult(
         score=data.get("score"),
         label=data.get("class") or data.get("band"),
         verdict=data.get("verdict"),
@@ -122,6 +170,15 @@ def _parse_json_response(raw: str) -> EvaluationResult:
         raw=raw,
         extras=extras,
     )
+
+    if repair:
+        result = dataclasses.replace(
+            result,
+            repaired=repaired,
+            repair_notes=repair_notes,
+        )
+
+    return result
 
 
 def _parse_xml_response(raw: str, schema: OutputSchema) -> EvaluationResult:

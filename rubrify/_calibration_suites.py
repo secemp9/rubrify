@@ -6,7 +6,7 @@ plain data so any consumer of the library can re-run the invariants against a
 live model. Per guard rail 9 of ``PHILOSOPHY.md``, rubrics that do not ship
 calibration are drafts, not artifacts.
 
-Two suites are exposed here:
+Three suites are exposed here:
 
 * ``COMPLIANCE_JUDGE_SUITE`` — the 4-case red-team set from
   ``references/main/gist-ff87ac23/red_team_rubric.py``. Includes the previously
@@ -17,6 +17,12 @@ Two suites are exposed here:
 * ``ANTI_SLOP_DISCRIMINANT_SUITE`` — two-case clean-vs-sloppy discriminant
   from the anti-slop rubric. Proves the minimal invariant ``clean > sloppy``
   via non-overlapping expected score ranges.
+
+* ``COMPLETENESS_FORCING_SUITE`` — two-case suite for the completeness forcing
+  rubric from ``references/main/rubrics/special_ones/completeness_rubric.md``.
+  Asserts that the forcing rubric produces output containing the required
+  structural wrapper (``<response>`` or
+  ``<full_entire_complete_updated_code_in_a_code_block_here>``).
 """
 
 from __future__ import annotations
@@ -117,5 +123,25 @@ ANTI_SLOP_DISCRIMINANT_SUITE: tuple[CalibrationCase, ...] = (
         expected_score_max=5,
         expected_band="Severe",
         notes="AI slop with hedges, buzzwords, empty emphasis",
+    ),
+)
+
+
+# --- Completeness forcing suite --------------------------------------------
+
+COMPLETENESS_FORCING_SUITE: tuple[CalibrationCase, ...] = (
+    CalibrationCase(
+        id="fibonacci_forcing",
+        payload={
+            "text": "Write me a Python function that computes fibonacci numbers recursively with memoization"
+        },
+        expected_valid=True,
+        notes="Output should contain <response> or <full_entire_complete_updated_code_in_a_code_block_here> wrapper",
+    ),
+    CalibrationCase(
+        id="hello_world_forcing",
+        payload={"text": "Write me a Python hello world program"},
+        expected_valid=True,
+        notes="Output should contain required structural wrapper",
     ),
 )

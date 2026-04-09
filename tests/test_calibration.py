@@ -20,6 +20,7 @@ import pytest
 import rubrify
 from rubrify._calibration_suites import (
     ANTI_SLOP_DISCRIMINANT_SUITE,
+    COMPLETENESS_FORCING_SUITE,
     COMPLIANCE_JUDGE_SUITE,
     QUERY,
 )
@@ -377,6 +378,23 @@ class TestAntiSlopSuiteStructure:
         assert sloppy.expected_band == "Severe"
 
 
+class TestCompletenessForcingSuiteStructure:
+    def test_has_2_cases(self) -> None:
+        assert len(COMPLETENESS_FORCING_SUITE) == 2
+        case_ids = {c.id for c in COMPLETENESS_FORCING_SUITE}
+        assert case_ids == {"fibonacci_forcing", "hello_world_forcing"}
+
+    def test_all_have_expected_valid(self) -> None:
+        for c in COMPLETENESS_FORCING_SUITE:
+            assert c.expected_valid is True
+
+    def test_all_carry_text_payload(self) -> None:
+        for c in COMPLETENESS_FORCING_SUITE:
+            assert "text" in c.payload
+            assert isinstance(c.payload["text"], str)
+            assert len(c.payload["text"]) > 0
+
+
 class TestPublicExports:
     def test_phase3_symbols_exported(self) -> None:
         for name in (
@@ -389,6 +407,7 @@ class TestPublicExports:
             "run_meta_evaluator_self_calibration",
             "COMPLIANCE_JUDGE_SUITE",
             "ANTI_SLOP_DISCRIMINANT_SUITE",
+            "COMPLETENESS_FORCING_SUITE",
         ):
             assert hasattr(rubrify, name), f"rubrify missing export: {name}"
 

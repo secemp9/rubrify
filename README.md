@@ -23,7 +23,7 @@ A rubric that judges, a rubric that forces structured output, a rubric that extr
 - **Evaluation** — `Rubric.evaluate()` over an OpenAI-compatible chat API, with JSON and XML output parsing.
 - **Generation (any2rubric)** — `generate()` takes a concept, book excerpt, or rules list and produces a valid `Rubric` object via composed meta-rubric generators.
 - **Meta-evaluation** — `META_EVALUATOR` is itself a rubric that judges other rubrics, mapped to property predicates.
-- **Rubric types** — `Rubric`, `ConstraintRubric`, `ProductRubric`, `CoproductRubric`.
+- **Rubric types** — `Rubric`, `ConstraintRubric`, `ParallelRubric`, `ConditionalRubric`.
 
 ## Quick start
 

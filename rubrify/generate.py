@@ -188,6 +188,8 @@ def generate(
         provenance.source_summary = source[:200]
     if not provenance.generated_by_model:
         provenance.generated_by_model = model
+    if last_meta_result is not None and not provenance.evaluated_by_model:
+        provenance.evaluated_by_model = model
     for step in steps:
         provenance.add_step(step)
     last_rubric.provenance = provenance
@@ -259,7 +261,7 @@ def refine(
 
     if target_score is not None and current_score is not None and current_score >= target_score:
         stopped_reason = "target_met"
-        _attach_refine_provenance(current_rubric, steps)
+        _attach_refine_provenance(current_rubric, steps, evaluated_by_model=model)
         report = RefinementReport(
             iterations=0,
             start_score=start_score,
@@ -274,7 +276,7 @@ def refine(
     stopped_reason = "max_iters"
     for iteration in range(max_iters):
         weak = [cid for cid, score in current_meta_result.subscores.items() if score < 3]
-        mutations = _suggest_mutations(current_rubric, weak, current_meta_result)
+        mutations = _suggest_mutations(current_rubric, weak)
 
         if not mutations:
             steps.append(
@@ -290,8 +292,7 @@ def refine(
             if stop_on_no_mutations:
                 stopped_reason = "no_mutations"
                 break
-            stopped_reason = "no_mutations"
-            break
+            continue
 
         new_rubric = current_rubric.evolve(mutations)
         new_meta_result = META_EVALUATOR.evaluate(new_rubric.to_xml(), client=client, model=model)
@@ -321,7 +322,7 @@ def refine(
             stopped_reason = "target_met"
             break
 
-    _attach_refine_provenance(current_rubric, steps)
+    _attach_refine_provenance(current_rubric, steps, evaluated_by_model=model)
 
     report = RefinementReport(
         iterations=len(steps),
@@ -336,17 +337,19 @@ def refine(
     return current_rubric
 
 
-def _attach_refine_provenance(rubric: Rubric, steps: list[RefinementStep]) -> None:
+def _attach_refine_provenance(
+    rubric: Rubric, steps: list[RefinementStep], *, evaluated_by_model: str = ""
+) -> None:
     """Append ``steps`` to ``rubric.provenance``, creating it if needed."""
     if rubric.provenance is None:
         rubric.provenance = RubricProvenance()
+    if evaluated_by_model and not rubric.provenance.evaluated_by_model:
+        rubric.provenance.evaluated_by_model = evaluated_by_model
     for step in steps:
         rubric.provenance.add_step(step)
 
 
-def _suggest_mutations(
-    rubric: Rubric, weak_properties: list[str], meta_result: EvaluationResult
-) -> list[RubricMutation]:
+def _suggest_mutations(rubric: Rubric, weak_properties: list[str]) -> list[RubricMutation]:
     """Map META_EVALUATOR weakness signals to concrete mutations.
 
     META_EVALUATOR criterion -> property predicate mapping:

@@ -31,13 +31,6 @@ def _text(elem: ET.Element | None) -> str:
     return elem.text.strip()
 
 
-def _text_raw(elem: ET.Element | None) -> str:
-    """Get text content preserving internal whitespace, but strip leading/trailing."""
-    if elem is None or elem.text is None:
-        return ""
-    return elem.text.strip()
-
-
 def _bool_attr(elem: ET.Element, attr: str, default: bool = False) -> bool:
     val = elem.get(attr, "").lower()
     if val in ("true", "1", "yes"):
@@ -74,7 +67,7 @@ def rubric_from_xml(xml_string: str) -> Rubric:
     # Step 5: Parse <what_to_judge>
     wtj = root.find("what_to_judge")
     if wtj is not None:
-        r.what_to_judge = _text_raw(wtj)
+        r.what_to_judge = _text(wtj)
 
     # Step 6: Parse <definitions>/<def>
     defs_elem = root.find("definitions")
@@ -287,7 +280,7 @@ def _parse_output_schema(elem: ET.Element) -> OutputSchema:
     json_template = elem.find("json_template")
     template_elem = elem.find("template")
     if json_template is not None:
-        schema.template = _text_raw(json_template)
+        schema.template = _text(json_template)
         schema.format = "json"
     elif template_elem is not None:
         # Handle CDATA or direct text
@@ -320,7 +313,7 @@ def _parse_output_schema(elem: ET.Element) -> OutputSchema:
 
 def _parse_scoring(elem: ET.Element) -> Scoring:
     """Parse <scoring> element."""
-    formula = _text_raw(elem.find("formula"))
+    formula = _text(elem.find("formula"))
 
     labels: dict[tuple[int, int], str] = {}
     labels_elem = elem.find("labels")
@@ -336,16 +329,6 @@ def _parse_scoring(elem: ET.Element) -> Scoring:
 
 
 # ── Serialization ──────────────────────────────────────────────────────
-
-
-def _escape_xml(text: str) -> str:
-    """Escape XML special characters."""
-    text = text.replace("&", "&amp;")
-    text = text.replace("<", "&lt;")
-    text = text.replace(">", "&gt;")
-    text = text.replace('"', "&quot;")
-    text = text.replace("'", "&apos;")
-    return text
 
 
 def rubric_to_xml(rubric: Rubric) -> str:

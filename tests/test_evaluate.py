@@ -216,7 +216,7 @@ class TestConstraintRubricApply:
         assert result == "generated output"
 
 
-class TestProductRubricEvaluate:
+class TestParallelRubricEvaluate:
     def test_evaluates_both_sub_rubrics(self) -> None:
         r1 = rubrify.Rubric(name="R1", mission="Test 1.")
         r1.add_criterion(Criterion(id="C1", name="X", weight=100, anchors={0: "a", 5: "b"}))
@@ -239,7 +239,7 @@ class TestProductRubricEvaluate:
         assert client.call_count == 2
 
 
-class TestCoproductRubricEvaluate:
+class TestConditionalRubricEvaluate:
     def test_dispatches_to_correct_rubric(self) -> None:
         r_sci = rubrify.Rubric(name="Science", mission="Science eval.")
         r_sci.add_criterion(
@@ -258,7 +258,7 @@ class TestCoproductRubricEvaluate:
                 return "science"
             return "business"
 
-        coprod = rubrify.CoproductRubric(
+        coprod = rubrify.ConditionalRubric(
             rubrics={"science": r_sci, "business": r_biz},
             selector=selector,
         )
@@ -282,7 +282,7 @@ class TestCoproductRubricEvaluate:
         r_b.add_criterion(Criterion(id="C1", name="Y", weight=100, anchors={0: "a", 5: "b"}))
         r_b.output_schema = OutputSchema(constraints={"must_be_json": True})
 
-        coprod = rubrify.CoproductRubric(
+        coprod = rubrify.ConditionalRubric(
             rubrics={"a": r_a, "b": r_b},
             selector=lambda text, **kw: "b",
         )

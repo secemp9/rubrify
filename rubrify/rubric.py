@@ -310,9 +310,9 @@ class Rubric:
                         )
         return result
 
-    def __and__(self, other: Rubric) -> ProductRubric:
-        """Product: parallel evaluation against both rubrics."""
-        return ProductRubric([self, other])
+    def __and__(self, other: Rubric) -> ParallelRubric:
+        """Parallel evaluation against both rubrics."""
+        return ParallelRubric([self, other])
 
     def project(self, criterion_ids: set[str]) -> Rubric:
         """Project to a subset of criteria. IDs not found are silently ignored."""
@@ -596,8 +596,12 @@ class ConstraintRubric:
         return f"ConstraintRubric(name={self.name!r}, examples={len(self.examples)})"
 
 
-class ProductRubric:
-    """Parallel evaluation against multiple rubrics. Returns list of results."""
+class ParallelRubric:
+    """Evaluate text against multiple rubrics simultaneously. Returns list of results.
+
+    Reference: the user's test_build.py demonstrated evaluating the same text
+    with both ZinsserJudge and AntiSlop in parallel.
+    """
 
     def __init__(self, rubrics: list[Rubric]) -> None:
         self.rubrics = rubrics
@@ -608,8 +612,12 @@ class ProductRubric:
         return [r.evaluate(text, client=client, model=model, **kwargs) for r in self.rubrics]
 
 
-class CoproductRubric:
-    """Conditional dispatch: selects a rubric based on input characteristics."""
+class ConditionalRubric:
+    """Dispatch evaluation to one of several rubrics based on a selector function.
+
+    Reference: genre-based evaluation where different genre criteria apply
+    to different texts.
+    """
 
     def __init__(
         self,

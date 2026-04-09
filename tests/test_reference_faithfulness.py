@@ -363,6 +363,30 @@ class TestAntiSlopInvariants:
 
         assert_calibration(report)
 
+    @pytest.mark.integration
+    def test_anti_slop_score_risk_invariant_live(self) -> None:
+        """Assert score + risk = 15 (the max score for 5 criteria * 3 max each)."""
+        env = _live_env()
+        if env is None:
+            pytest.skip("live API env vars not set")
+        base_url, api_key, model = env
+
+        client = rubrify.Client(base_url=base_url, api_key=api_key)
+        try:
+            r = rubrify.load(str(FIXTURES / "anti_slop_rubric.xml"))
+            result = r.evaluate(
+                "Some test text with AI slop...",
+                client=client,
+                model=model,
+            )
+        finally:
+            client.close()
+
+        if result.score is not None and result.risk is not None:
+            assert (
+                result.score + result.risk == 15
+            ), f"Invariant broken: score({result.score}) + risk({result.risk}) != 15"
+
 
 # ── Anti-slop Python reproduction (mocked) ──────────────────────────────
 

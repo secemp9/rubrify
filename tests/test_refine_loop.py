@@ -175,7 +175,6 @@ class TestRefineStopping:
         def always_mutate(
             rubric: rubrify.Rubric,
             weak_properties: list[str],
-            meta_result: rubrify.EvaluationResult,
         ) -> list[object]:
             call_counter["n"] += 1
             return [
@@ -224,7 +223,6 @@ class TestRefineStopping:
         def always_mutate(
             rubric: rubrify.Rubric,
             weak_properties: list[str],
-            meta_result: rubrify.EvaluationResult,
         ) -> list[object]:
             return [
                 AddSteeringConstraint(

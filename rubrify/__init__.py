@@ -3,6 +3,7 @@ __version__ = "0.1.0"
 from rubrify._behaviors import CONSTRAINT_BEHAVIORS
 from rubrify._calibration_suites import (
     ANTI_SLOP_DISCRIMINANT_SUITE,
+    COMPLETENESS_FORCING_SUITE,
     COMPLIANCE_JUDGE_SUITE,
 )
 from rubrify._examples import (
@@ -94,7 +95,7 @@ from rubrify.repair import (
     extract_xml_candidate,
 )
 from rubrify.result import ConstraintResult, EvaluationResult, EvaluationTrace
-from rubrify.rubric import ConstraintRubric, CoproductRubric, ProductRubric, Rubric
+from rubrify.rubric import ConditionalRubric, ConstraintRubric, ParallelRubric, Rubric
 
 
 def load(path: str) -> Rubric:
@@ -123,8 +124,8 @@ __all__ = [
     "refine",
     "Rubric",
     "ConstraintRubric",
-    "ProductRubric",
-    "CoproductRubric",
+    "ParallelRubric",
+    "ConditionalRubric",
     "Criterion",
     "Disqualifier",
     "OutputSchema",
@@ -188,6 +189,7 @@ __all__ = [
     "run_meta_evaluator_self_calibration",
     "COMPLIANCE_JUDGE_SUITE",
     "ANTI_SLOP_DISCRIMINANT_SUITE",
+    "COMPLETENESS_FORCING_SUITE",
     # Phase 4: provenance and lineage
     "RefinementStep",
     "RubricProvenance",

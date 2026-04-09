@@ -93,7 +93,7 @@ class TestProduct:
         a = _rubric_a()
         b = _rubric_b()
         product = a & b
-        assert isinstance(product, rubrify.ProductRubric)
+        assert isinstance(product, rubrify.ParallelRubric)
         assert len(product.rubrics) == 2
         assert product.rubrics[0].name == "A"
         assert product.rubrics[1].name == "B"
