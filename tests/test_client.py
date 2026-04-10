@@ -5,7 +5,15 @@ from unittest.mock import patch
 
 import pytest
 
-from rubrify.client import AnthropicClient, ChatClient, Client, OpenAIClient, OpenRouterClient
+from rubrify.client import (
+    AnthropicClient,
+    ChatClient,
+    Client,
+    OpenAIClient,
+    OpenRouterClient,
+    _resolve_model_for_openrouter,
+    _strip_provider_prefix,
+)
 
 
 class TestClientConstruction:
@@ -240,3 +248,60 @@ class TestOpenRouterLive:
         assert result.score is not None, "Score should not be None"
         assert result.raw, "Raw should be populated"
         print(f"OpenRouter rubric eval: score={result.score}, label={result.label}")
+
+
+class TestModelNameResolution:
+    """Model names resolve correctly across providers."""
+
+    # --- OpenRouter resolution ---
+    def test_bare_claude_gets_anthropic_prefix(self) -> None:
+        assert _resolve_model_for_openrouter("claude-sonnet-4-6") == "anthropic/claude-sonnet-4-6"
+
+    def test_bare_gpt_gets_openai_prefix(self) -> None:
+        assert _resolve_model_for_openrouter("gpt-4o") == "openai/gpt-4o"
+
+    def test_bare_gemini_gets_google_prefix(self) -> None:
+        assert _resolve_model_for_openrouter("gemini-2.5-pro") == "google/gemini-2.5-pro"
+
+    def test_bare_llama_gets_meta_prefix(self) -> None:
+        assert _resolve_model_for_openrouter("llama-3-70b") == "meta-llama/llama-3-70b"
+
+    def test_bare_mistral_gets_mistralai_prefix(self) -> None:
+        assert _resolve_model_for_openrouter("mistral-large") == "mistralai/mistral-large"
+
+    def test_bare_deepseek_gets_deepseek_prefix(self) -> None:
+        assert _resolve_model_for_openrouter("deepseek-r1") == "deepseek/deepseek-r1"
+
+    def test_already_prefixed_passthrough(self) -> None:
+        assert (
+            _resolve_model_for_openrouter("anthropic/claude-sonnet-4-6")
+            == "anthropic/claude-sonnet-4-6"
+        )
+
+    def test_unknown_bare_passthrough(self) -> None:
+        assert _resolve_model_for_openrouter("some-custom-model") == "some-custom-model"
+
+    # --- Prefix stripping ---
+    def test_strip_anthropic_prefix(self) -> None:
+        assert _strip_provider_prefix("anthropic/claude-sonnet-4-6") == "claude-sonnet-4-6"
+
+    def test_strip_openai_prefix(self) -> None:
+        assert _strip_provider_prefix("openai/gpt-4o") == "gpt-4o"
+
+    def test_bare_name_unchanged(self) -> None:
+        assert _strip_provider_prefix("claude-sonnet-4-6") == "claude-sonnet-4-6"
+
+    # --- Unified Client resolves correctly ---
+    def test_unified_client_openrouter_resolves_bare_claude(self) -> None:
+        c = Client(api_key="sk-or-v1-test")
+        assert c.provider == "openrouter"
+        assert _resolve_model_for_openrouter("claude-sonnet-4-6") == "anthropic/claude-sonnet-4-6"
+
+    def test_unified_client_anthropic_strips_prefix(self) -> None:
+        c = Client(api_key="sk-ant-test")
+        assert c.provider == "anthropic"
+        assert _strip_provider_prefix("anthropic/claude-sonnet-4-6") == "claude-sonnet-4-6"
+
+    def test_unified_client_generic_passthrough(self) -> None:
+        c = Client(base_url="http://localhost", api_key="test")
+        assert c.provider == "generic"

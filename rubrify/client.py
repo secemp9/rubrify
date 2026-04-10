@@ -59,6 +59,55 @@ def _detect_provider(api_key: str, base_url: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Model name resolution
+# ---------------------------------------------------------------------------
+
+# Maps bare model-name prefixes to OpenRouter provider slugs.
+_OPENROUTER_FAMILY_MAP: dict[str, str] = {
+    "claude": "anthropic",
+    "gpt": "openai",
+    "o1": "openai",
+    "o3": "openai",
+    "o4": "openai",
+    "chatgpt": "openai",
+    "gemini": "google",
+    "llama": "meta-llama",
+    "mistral": "mistralai",
+    "mixtral": "mistralai",
+    "deepseek": "deepseek",
+    "qwen": "qwen",
+    "command": "cohere",
+}
+
+
+def _resolve_model_for_openrouter(model: str) -> str:
+    """Add provider prefix for OpenRouter if the name is bare.
+
+    ``claude-sonnet-4-6``  ->  ``anthropic/claude-sonnet-4-6``
+    ``gpt-4o``             ->  ``openai/gpt-4o``
+    ``anthropic/claude-*`` ->  pass-through (already prefixed)
+    """
+    if "/" in model:
+        return model  # already has a provider prefix
+    for prefix, provider in _OPENROUTER_FAMILY_MAP.items():
+        if model.startswith(prefix):
+            return f"{provider}/{model}"
+    return model  # unknown family, pass through bare
+
+
+def _strip_provider_prefix(model: str) -> str:
+    """Strip provider prefix for direct SDK calls.
+
+    ``anthropic/claude-sonnet-4-6``  ->  ``claude-sonnet-4-6``
+    ``openai/gpt-4o``               ->  ``gpt-4o``
+    ``gpt-4o``                      ->  ``gpt-4o`` (no-op)
+    """
+    if "/" in model:
+        return model.split("/", 1)[1]
+    return model
+
+
+# ---------------------------------------------------------------------------
 # Unified client
 # ---------------------------------------------------------------------------
 
@@ -131,6 +180,14 @@ class Client:
         temperature: float = 0.0,
         max_tokens: int = 4096,
     ) -> str:
+        # Resolve model name for the detected provider so users can pass
+        # either bare names or provider-prefixed names interchangeably.
+        if self.provider == "openrouter":
+            model = _resolve_model_for_openrouter(model)
+        elif self.provider in ("openai", "anthropic"):
+            model = _strip_provider_prefix(model)
+        # else: generic — pass through as-is
+
         if self._delegate is not None:
             return self._delegate.chat(
                 messages=messages,
@@ -211,6 +268,7 @@ class OpenRouterClient:
         temperature: float = 0.0,
         max_tokens: int = 4096,
     ) -> str:
+        model = _resolve_model_for_openrouter(model)
         url = f"{self.OPENROUTER_BASE_URL}/v1/chat/completions"
         headers: dict[str, str] = {
             "Authorization": f"Bearer {self.api_key}",
@@ -285,6 +343,7 @@ class OpenAIClient:
         temperature: float = 0.0,
         max_tokens: int = 4096,
     ) -> str:
+        model = _strip_provider_prefix(model)
         resp = self._client.chat.completions.create(
             model=model,
             messages=messages,  # type: ignore[arg-type]
@@ -353,6 +412,7 @@ class AnthropicClient:
             else:
                 user_messages.append(msg)
 
+        model = _strip_provider_prefix(model)
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": user_messages,
