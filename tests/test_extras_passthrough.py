@@ -81,7 +81,7 @@ class TestJsonExtrasPassthrough:
 class TestXmlExtrasPassthrough:
     def test_unknown_tag_appears_in_extras(self) -> None:
         schema = OutputSchema(constraints={"must_use_xml_tags": True})
-        raw = "<Rationale>Good</Rationale>" "<Judgement>Yes</Judgement>" "<Meta>extra data</Meta>"
+        raw = "<Rationale>Good</Rationale><Judgement>Yes</Judgement><Meta>extra data</Meta>"
         result = _parse_xml_response(raw, schema)
         assert result.verdict == "Yes"
         assert result.rationale == "Good"
@@ -104,7 +104,7 @@ class TestXmlExtrasPassthrough:
 
     def test_extras_json_serializable_for_xml(self) -> None:
         schema = OutputSchema(constraints={"must_use_xml_tags": True})
-        raw = "<Judgement>Yes</Judgement>" "<Flags><HasHype>true</HasHype></Flags>"
+        raw = "<Judgement>Yes</Judgement><Flags><HasHype>true</HasHype></Flags>"
         result = _parse_xml_response(raw, schema)
         # Must not raise.
         json.dumps(result.extras)

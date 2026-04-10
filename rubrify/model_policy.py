@@ -18,11 +18,11 @@ from __future__ import annotations
 
 import fnmatch
 import warnings
-from enum import Enum
+from enum import StrEnum
 from typing import Final
 
 
-class ModelTier(str, Enum):
+class ModelTier(StrEnum):
     RECOMMENDED = "recommended"
     SUPPORTED = "supported"
     EXPERIMENTAL = "experimental"
@@ -68,44 +68,71 @@ DISCOURAGED: Final[tuple[str, ...]] = (
 )
 
 
+_PROVIDER_PREFIXES: Final[tuple[str, ...]] = (
+    "openai/",
+    "anthropic/",
+    "google/",
+    "meta-llama/",
+    "mistralai/",
+    "deepseek/",
+    "qwen/",
+    "cohere/",
+    "perplexity/",
+)
+
+
+def normalize_model_name(name: str) -> str:
+    """Strip common provider prefixes from model names.
+
+    OpenRouter uses ``openai/gpt-5``, ``anthropic/claude-sonnet-4-6``, etc.
+    Direct API calls use bare names like ``gpt-5``, ``claude-sonnet-4-6``.
+    This strips the provider prefix so policy matching works for both styles.
+    """
+    for prefix in _PROVIDER_PREFIXES:
+        if name.startswith(prefix):
+            return name[len(prefix) :]
+    return name
+
+
 def check_model(name: str) -> tuple[ModelTier, str]:
     """Return the tier and a human-readable message for a model name.
 
     Uses fnmatch patterns so ``claude-sonnet-4-6`` matches
-    ``claude-sonnet-4*``. Unknown models return
-    ``(ModelTier.UNKNOWN, guidance)``.
+    ``claude-sonnet-4*``.  Provider prefixes (``openai/``, ``anthropic/``,
+    etc.) are stripped automatically so both OpenRouter-style and bare
+    model names work.  Unknown models return ``(ModelTier.UNKNOWN, guidance)``.
     """
+    normalized = normalize_model_name(name)
     for pattern in RECOMMENDED:
-        if fnmatch.fnmatch(name, pattern):
+        if fnmatch.fnmatch(normalized, pattern):
             return (
                 ModelTier.RECOMMENDED,
                 f"{name!r} is in the recommended tier. "
                 "Fully tested for XML and steering anchor compliance.",
             )
     for pattern in SUPPORTED:
-        if fnmatch.fnmatch(name, pattern):
+        if fnmatch.fnmatch(normalized, pattern):
             return (
                 ModelTier.SUPPORTED,
                 f"{name!r} is in the supported tier. "
                 "Expected to work; calibrate for production use.",
             )
     for pattern in EXPERIMENTAL:
-        if fnmatch.fnmatch(name, pattern):
+        if fnmatch.fnmatch(normalized, pattern):
             return (
                 ModelTier.EXPERIMENTAL,
                 f"{name!r} is in the experimental tier. "
                 "Calibrate against reference suites before relying on it.",
             )
     for pattern in DISCOURAGED:
-        if fnmatch.fnmatch(name, pattern):
+        if fnmatch.fnmatch(normalized, pattern):
             return (
                 ModelTier.DISCOURAGED,
-                f"{name!r} is discouraged. "
-                "Known to drift on XML contracts and steering anchors.",
+                f"{name!r} is discouraged. Known to drift on XML contracts and steering anchors.",
             )
     return (
         ModelTier.UNKNOWN,
-        f"{name!r} is not in the policy. " "Treat as experimental and calibrate before use.",
+        f"{name!r} is not in the policy. Treat as experimental and calibrate before use.",
     )
 
 

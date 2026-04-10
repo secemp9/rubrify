@@ -23,13 +23,7 @@ class TestExtractJsonCandidate:
         assert result.text == raw
 
     def test_extracts_from_json_code_fence(self) -> None:
-        raw = (
-            "Here is my evaluation:\n"
-            "```json\n"
-            '{"score": 70, "class": "Usable"}\n'
-            "```\n"
-            "Done."
-        )
+        raw = 'Here is my evaluation:\n```json\n{"score": 70, "class": "Usable"}\n```\nDone.'
         result = extract_json_candidate(raw)
         assert result.repaired is True
         assert "json" in result.notes[0]
@@ -37,7 +31,7 @@ class TestExtractJsonCandidate:
         assert data["score"] == 70
 
     def test_extracts_from_unlabeled_code_fence(self) -> None:
-        raw = "```\n" '{"score": 55}\n' "```"
+        raw = '```\n{"score": 55}\n```'
         result = extract_json_candidate(raw)
         assert result.repaired is True
         assert result.notes  # populated
@@ -149,7 +143,7 @@ class TestAttemptSchemaRepair:
         schema = OutputSchema(constraints={"must_use_xml_tags": True})
         # Bare ampersand poisons strategy 1 (direct ET parse) and forces the
         # required-tag regex scrape path to fire.
-        raw = "Chat chat & chat. <Judgement>No</Judgement> " "more chat <Rationale>why</Rationale>."
+        raw = "Chat chat & chat. <Judgement>No</Judgement> more chat <Rationale>why</Rationale>."
         result = attempt_schema_repair(raw, schema)
         assert result.repaired is True
         assert "<Judgement>No</Judgement>" in result.text

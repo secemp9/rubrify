@@ -13,6 +13,7 @@ from rubrify.model_policy import (
     SUPPORTED,
     ModelTier,
     check_model,
+    normalize_model_name,
     warn_unsupported,
 )
 
@@ -218,3 +219,48 @@ class TestWarnUnsupported:
         """The emitted warning is explicitly namespaced to rubrify model policy."""
         with pytest.warns(UserWarning, match="rubrify model policy:"):
             warn_unsupported("mistral-large")
+
+
+class TestNormalizeModelName:
+    def test_strip_openai_prefix(self) -> None:
+        assert normalize_model_name("openai/gpt-5") == "gpt-5"
+
+    def test_strip_anthropic_prefix(self) -> None:
+        assert normalize_model_name("anthropic/claude-sonnet-4-6") == "claude-sonnet-4-6"
+
+    def test_strip_google_prefix(self) -> None:
+        assert normalize_model_name("google/gemini-2.5-pro") == "gemini-2.5-pro"
+
+    def test_strip_meta_prefix(self) -> None:
+        assert normalize_model_name("meta-llama/llama-3-70b") == "llama-3-70b"
+
+    def test_strip_deepseek_prefix(self) -> None:
+        assert normalize_model_name("deepseek/deepseek-r1") == "deepseek-r1"
+
+    def test_no_prefix(self) -> None:
+        assert normalize_model_name("gpt-5") == "gpt-5"
+
+    def test_unknown_prefix_unchanged(self) -> None:
+        assert normalize_model_name("someprovider/somemodel") == "someprovider/somemodel"
+
+
+class TestCheckModelWithProviderPrefix:
+    def test_openrouter_openai_gpt5(self) -> None:
+        tier, msg = check_model("openai/gpt-5")
+        assert tier == ModelTier.RECOMMENDED
+
+    def test_openrouter_anthropic_claude(self) -> None:
+        tier, msg = check_model("anthropic/claude-sonnet-4-6")
+        assert tier == ModelTier.RECOMMENDED
+
+    def test_openrouter_google_gemini(self) -> None:
+        tier, msg = check_model("google/gemini-2.5-pro")
+        assert tier == ModelTier.EXPERIMENTAL
+
+    def test_openrouter_meta_llama(self) -> None:
+        tier, msg = check_model("meta-llama/llama-3-70b")
+        assert tier == ModelTier.EXPERIMENTAL
+
+    def test_bare_name_still_works(self) -> None:
+        tier, msg = check_model("claude-sonnet-4-6")
+        assert tier == ModelTier.RECOMMENDED

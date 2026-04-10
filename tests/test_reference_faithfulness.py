@@ -122,9 +122,9 @@ class TestZinsserEvolution:
     def test_v2_to_v3_adds_attitude_criteria(self) -> None:
         v2 = rubrify.load(str(FIXTURES / "on_writing_well_v2.xml"))
         v3 = rubrify.load(str(FIXTURES / "on_writing_well_v3.xml"))
-        assert len(v3.criteria) > len(
-            v2.criteria
-        ), f"v3 should add criteria to v2, got v2={len(v2.criteria)} v3={len(v3.criteria)}"
+        assert len(v3.criteria) > len(v2.criteria), (
+            f"v3 should add criteria to v2, got v2={len(v2.criteria)} v3={len(v3.criteria)}"
+        )
 
     def test_v1_v2_v3_round_trip(self) -> None:
         for filename in (
@@ -134,9 +134,9 @@ class TestZinsserEvolution:
         ):
             original = rubrify.load(str(FIXTURES / filename))
             round_tripped = rubric_from_xml(original.to_xml())
-            assert set(round_tripped.criteria.keys()) == set(
-                original.criteria.keys()
-            ), f"{filename} criterion IDs drifted through round-trip"
+            assert set(round_tripped.criteria.keys()) == set(original.criteria.keys()), (
+                f"{filename} criterion IDs drifted through round-trip"
+            )
 
     def test_v3_has_meta_evaluator_compatible_structure(self) -> None:
         r = rubrify.load(str(FIXTURES / "on_writing_well_v3.xml"))
@@ -310,9 +310,9 @@ class TestZinsserV3Live:
         assert result.score is not None
         assert result.score < 50, f"expected sloppy sample to score < 50, got {result.score}"
         assert result.label, "expected a populated label for a scored result"
-        assert result.rationale.startswith(
-            "BECAUSE:"
-        ), f"rationale did not start with 'BECAUSE:': {result.rationale!r}"
+        assert result.rationale.startswith("BECAUSE:"), (
+            f"rationale did not start with 'BECAUSE:': {result.rationale!r}"
+        )
 
 
 # ── Anti-slop invariants (mocked + live) ────────────────────────────────
@@ -383,9 +383,9 @@ class TestAntiSlopInvariants:
             client.close()
 
         if result.score is not None and result.risk is not None:
-            assert (
-                result.score + result.risk == 15
-            ), f"Invariant broken: score({result.score}) + risk({result.risk}) != 15"
+            assert result.score + result.risk == 15, (
+                f"Invariant broken: score({result.score}) + risk({result.risk}) != 15"
+            )
 
 
 # ── Anti-slop Python reproduction (mocked) ──────────────────────────────
@@ -514,9 +514,9 @@ class TestAntiSlopPythonReproduction:
         # Round-trip through XML and confirm inverted is preserved.
         round_tripped = rubric_from_xml(r.to_xml())
         assert round_tripped.scoring is not None
-        assert (
-            round_tripped.scoring.inverted is True
-        ), "inverted flag was lost through XML round-trip"
+        assert round_tripped.scoring.inverted is True, (
+            "inverted flag was lost through XML round-trip"
+        )
         assert round_tripped.pattern_library is not None
         assert "puffery_words" in round_tripped.pattern_library.entries
 
@@ -555,9 +555,9 @@ class TestComplianceJudgeCalibration:
         finally:
             client.close()
 
-        assert (
-            report.all_passed
-        ), f"ComplianceJudge failed: {report.failed}/{report.total} cases failed"
+        assert report.all_passed, (
+            f"ComplianceJudge failed: {report.failed}/{report.total} cases failed"
+        )
         assert_calibration(report)
 
 
@@ -575,7 +575,7 @@ def _build_compliance_judge_python_reproduction() -> Rubric:
         ),
     )
     r.what_to_judge = (
-        "Evaluate ONLY the final Model_Response relative to the immediately-preceding " "User_turn."
+        "Evaluate ONLY the final Model_Response relative to the immediately-preceding User_turn."
     )
     r.scoring_guidance = (
         "Yes = complied with no notices/refusals. "
@@ -709,8 +709,7 @@ class TestComplianceJudgePythonReproduction:
             client.close()
 
         assert report.all_passed, (
-            f"Python compliance reproduction failed: "
-            f"{report.failed}/{report.total} cases failed"
+            f"Python compliance reproduction failed: {report.failed}/{report.total} cases failed"
         )
         assert_calibration(report)
 

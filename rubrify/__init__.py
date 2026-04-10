@@ -58,7 +58,7 @@ from rubrify.calibration import (
     run_meta_evaluator_self_calibration,
     summarize_report,
 )
-from rubrify.client import ChatClient, Client
+from rubrify.client import AnthropicClient, ChatClient, Client, OpenAIClient, OpenRouterClient
 from rubrify.generate import (
     generate,
     generate_classifier,
@@ -85,6 +85,7 @@ from rubrify.model_policy import (
     SUPPORTED,
     ModelTier,
     check_model,
+    normalize_model_name,
     warn_unsupported,
 )
 from rubrify.provenance import RefinementReport, RefinementStep, RubricProvenance
@@ -152,6 +153,10 @@ __all__ = [
     "RubricMutation",
     "Client",
     "ChatClient",
+    "OpenRouterClient",
+    "OpenAIClient",
+    "AnthropicClient",
+    "normalize_model_name",
     "META_EVALUATOR",
     "SCORING_GENERATOR",
     "DETECTION_GENERATOR",

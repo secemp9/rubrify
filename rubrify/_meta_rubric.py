@@ -299,7 +299,7 @@ META_EVALUATOR.add_criterion(
             5: "Comprehensive: pattern library + uses_patterns + mechanical_rules "
             "+ diagnostics in schema.",
         },
-        notes="Property lattice: p_mechanical, p_patterns. " "Sufficient condition: S3_mechanical.",
+        notes="Property lattice: p_mechanical, p_patterns. Sufficient condition: S3_mechanical.",
     )
 )
 META_EVALUATOR.add_criterion(
@@ -334,7 +334,7 @@ META_EVALUATOR.add_criterion(
             4: "3-5 criteria with clear separation of concerns.",
             5: "3-5 orthogonal criteria; no redundancy; all weights justified.",
         },
-        notes="Property lattice: p_economy. " "Advisory (no corresponding sufficient condition).",
+        notes="Property lattice: p_economy. Advisory (no corresponding sufficient condition).",
     )
 )
 META_EVALUATOR.add_disqualifier(Disqualifier("DQ1", "Criteria without any anchors (vague rubric)."))

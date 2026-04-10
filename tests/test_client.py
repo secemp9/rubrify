@@ -3,7 +3,9 @@
 import os
 from unittest.mock import patch
 
-from rubrify.client import ChatClient, Client
+import pytest
+
+from rubrify.client import AnthropicClient, ChatClient, Client, OpenAIClient, OpenRouterClient
 
 
 class TestClientConstruction:
@@ -64,3 +66,91 @@ class TestChatClientProtocol:
 
         bc = BadClient()
         assert not isinstance(bc, ChatClient)
+
+
+class TestOpenRouterClient:
+    def test_is_chatclient(self) -> None:
+        c = OpenRouterClient(api_key="test")
+        assert isinstance(c, ChatClient)
+
+    def test_default_base_url(self) -> None:
+        assert OpenRouterClient.OPENROUTER_BASE_URL == "https://openrouter.ai/api"
+
+    def test_from_env(self) -> None:
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-test"}):
+            c = OpenRouterClient.from_env()
+            assert c.api_key == "sk-or-test"
+
+    def test_context_manager(self) -> None:
+        with OpenRouterClient(api_key="test") as c:
+            assert isinstance(c, OpenRouterClient)
+
+    def test_custom_headers(self) -> None:
+        c = OpenRouterClient(api_key="test", app_name="myapp", site_url="https://example.com")
+        assert c.app_name == "myapp"
+        assert c.site_url == "https://example.com"
+
+
+class TestOpenAIClient:
+    def test_is_chatclient(self) -> None:
+        c = OpenAIClient(api_key="sk-test")
+        assert isinstance(c, ChatClient)
+
+    def test_from_env(self) -> None:
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}):
+            c = OpenAIClient.from_env()
+            assert isinstance(c, ChatClient)
+
+    def test_context_manager(self) -> None:
+        with OpenAIClient(api_key="sk-test") as c:
+            assert isinstance(c, OpenAIClient)
+
+
+class TestAnthropicClient:
+    def test_is_chatclient(self) -> None:
+        c = AnthropicClient(api_key="sk-ant-test")
+        assert isinstance(c, ChatClient)
+
+    def test_from_env(self) -> None:
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test"}):
+            c = AnthropicClient.from_env()
+            assert isinstance(c, ChatClient)
+
+    def test_context_manager(self) -> None:
+        with AnthropicClient(api_key="sk-ant-test") as c:
+            assert isinstance(c, AnthropicClient)
+
+
+class TestOpenRouterLive:
+    @pytest.mark.integration
+    def test_openrouter_chat(self) -> None:
+        api_key = os.environ.get("OPENROUTER_API_KEY", "")
+        if not api_key:
+            pytest.skip("OPENROUTER_API_KEY not set")
+        c = OpenRouterClient(api_key=api_key)
+        result = c.chat(
+            messages=[{"role": "user", "content": "Say hello in exactly 3 words."}],
+            model="anthropic/claude-sonnet-4-6",
+            temperature=0.0,
+            max_tokens=50,
+        )
+        assert len(result) > 0, "OpenRouter returned empty response"
+        print(f"OpenRouter response: {result!r}")
+
+    @pytest.mark.integration
+    def test_openrouter_rubric_evaluate(self) -> None:
+        import rubrify
+
+        api_key = os.environ.get("OPENROUTER_API_KEY", "")
+        if not api_key:
+            pytest.skip("OPENROUTER_API_KEY not set")
+        c = OpenRouterClient(api_key=api_key)
+        rubric = rubrify.load("tests/fixtures/on_writing_well_v3.xml")
+        result = rubric.evaluate(
+            "The sunset was very beautiful and quite breathtaking.",
+            client=c,
+            model="anthropic/claude-sonnet-4-6",
+        )
+        assert result.score is not None, "Score should not be None"
+        assert result.raw, "Raw should be populated"
+        print(f"OpenRouter rubric eval: score={result.score}, label={result.label}")

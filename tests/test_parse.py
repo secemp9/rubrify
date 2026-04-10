@@ -158,7 +158,7 @@ class TestParseResponseRepair:
 
     def test_repair_true_recovers_from_code_fenced_json(self) -> None:
         schema = OutputSchema(constraints={"must_be_json": True})
-        raw = "Here is my output:\n" "```json\n" '{"score": 72, "class": "Good"}\n' "```"
+        raw = 'Here is my output:\n```json\n{"score": 72, "class": "Good"}\n```'
         result = parse_response(raw, schema, repair=True)
         assert result.score == 72
         assert result.label == "Good"

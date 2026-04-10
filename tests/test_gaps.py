@@ -122,9 +122,9 @@ class TestCompliancePipeSplit:
         original = rubrify.load(str(FIXTURES / "compliance_judge.xml"))
         reloaded = rubrify.loads(original.to_xml())
         for key in original.pattern_library.entries:
-            assert (
-                original.pattern_library.entries[key] == reloaded.pattern_library.entries[key]
-            ), f"Group {key} changed on round-trip"
+            assert original.pattern_library.entries[key] == reloaded.pattern_library.entries[key], (
+                f"Group {key} changed on round-trip"
+            )
 
     def test_group_patterns_stored_during_parse(self) -> None:
         """Variant 3 parsing should populate _group_patterns for round-trip fidelity."""
@@ -216,9 +216,9 @@ class TestUsesPatternsXrefs:
         for crit in reloaded.criteria.values():
             if crit.uses_patterns:
                 for pat_id in crit.uses_patterns:
-                    assert (
-                        pat_id in reloaded.pattern_library.entries
-                    ), f"Criterion {crit.id} references pattern {pat_id} not in library"
+                    assert pat_id in reloaded.pattern_library.entries, (
+                        f"Criterion {crit.id} references pattern {pat_id} not in library"
+                    )
 
     def test_c1_keeps_all_four_pattern_refs(self) -> None:
         reloaded = rubrify.loads(rubrify.load(str(FIXTURES / "anti_slop_rubric.xml")).to_xml())

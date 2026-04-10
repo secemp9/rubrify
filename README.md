@@ -215,6 +215,58 @@ print(report.passed, report.failed)
 
 ---
 
+## Providers
+
+### Generic OpenAI-compatible (default)
+
+Works with any OpenAI-compatible endpoint out of the box.
+
+```python
+client = rubrify.Client(base_url="http://localhost:8317", api_key="your-key")
+```
+
+### OpenRouter
+
+Uses httpx with OpenRouter-specific headers. Model names use OpenRouter format.
+
+```python
+client = rubrify.OpenRouterClient(api_key="sk-or-v1-...")
+
+result = rubric.evaluate(text, client=client, model="anthropic/claude-sonnet-4-6")
+```
+
+### OpenAI direct
+
+Wraps the official `openai` Python SDK. Requires `pip install rubrify[openai]`.
+
+```python
+client = rubrify.OpenAIClient(api_key="sk-...")
+
+result = rubric.evaluate(text, client=client, model="gpt-4o")
+```
+
+### Anthropic direct
+
+Wraps the official `anthropic` Python SDK. Requires `pip install rubrify[anthropic]`.
+
+```python
+client = rubrify.AnthropicClient(api_key="sk-ant-...")
+
+result = rubric.evaluate(text, client=client, model="claude-sonnet-4-6")
+```
+
+### Bring your own client
+
+Any object implementing the `ChatClient` protocol works:
+
+```python
+class MyClient:
+    def chat(self, *, messages, model, temperature=0.0, max_tokens=4096) -> str:
+        ...
+```
+
+---
+
 ## Recommended models
 
 `rubrify` is opinionated about model support.
