@@ -39,6 +39,10 @@ test_deep.py
 test_build.py
 /generated_rubric.xml
 
+# Local planning/research artifacts
+/plans/
+/research/
+
 # OS
 .DS_Store
 Thumbs.db

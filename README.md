@@ -254,7 +254,7 @@ result = rubric.evaluate(
 The library is constrained by two documents:
 
 - [PHILOSOPHY.md](./PHILOSOPHY.md) — product framing, philosophy anchors, guard rails
-- [`plans/rubrify-next_requirements.md`](./plans/rubrify-next_requirements.md) — current requirements dossier
+- `PHILOSOPHY.md` is the canonical public design document in this repository.
 
 If you are trying to understand why the library looks the way it does, start there.
 
