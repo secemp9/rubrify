@@ -85,7 +85,6 @@ from rubrify.model_policy import (
     SUPPORTED,
     ModelTier,
     check_model,
-    normalize_model_name,
     warn_unsupported,
 )
 from rubrify.provenance import RefinementReport, RefinementStep, RubricProvenance
@@ -156,7 +155,6 @@ __all__ = [
     "OpenRouterClient",
     "OpenAIClient",
     "AnthropicClient",
-    "normalize_model_name",
     "META_EVALUATOR",
     "SCORING_GENERATOR",
     "DETECTION_GENERATOR",

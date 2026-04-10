@@ -31,7 +31,9 @@ class ModelTier(StrEnum):
 
 
 # Recommended: fully tested, follows XML and steering anchors reliably.
+# Both bare names (direct API) and provider-prefixed names (OpenRouter) are listed.
 RECOMMENDED: Final[tuple[str, ...]] = (
+    # Bare names (OpenAI direct, Anthropic direct, generic endpoints)
     "gpt-5*",
     "gpt-4.1*",
     "gpt-4o*",
@@ -40,12 +42,23 @@ RECOMMENDED: Final[tuple[str, ...]] = (
     "claude-haiku-4*",
     "claude-3-5-sonnet*",
     "claude-3-opus*",
+    # OpenRouter-style prefixed names
+    "openai/gpt-5*",
+    "openai/gpt-4.1*",
+    "openai/gpt-4o*",
+    "anthropic/claude-opus-4*",
+    "anthropic/claude-sonnet-4*",
+    "anthropic/claude-haiku-4*",
+    "anthropic/claude-3-5-sonnet*",
+    "anthropic/claude-3-opus*",
 )
 
 # Supported: expected to work but limited production experience.
 SUPPORTED: Final[tuple[str, ...]] = (
     "gpt-4*",
     "claude-3-*",
+    "openai/gpt-4*",
+    "anthropic/claude-3-*",
 )
 
 # Experimental: may work with hand-holding; calibrate before relying.
@@ -56,6 +69,12 @@ EXPERIMENTAL: Final[tuple[str, ...]] = (
     "qwen*",
     "gemini*",
     "deepseek*",
+    "openai/gpt-3.5*",
+    "mistralai/mistral*",
+    "meta-llama/llama*",
+    "qwen/qwen*",
+    "google/gemini*",
+    "deepseek/deepseek*",
 )
 
 # Discouraged: known to drift on structured outputs or fail on anchors.
@@ -68,64 +87,38 @@ DISCOURAGED: Final[tuple[str, ...]] = (
 )
 
 
-_PROVIDER_PREFIXES: Final[tuple[str, ...]] = (
-    "openai/",
-    "anthropic/",
-    "google/",
-    "meta-llama/",
-    "mistralai/",
-    "deepseek/",
-    "qwen/",
-    "cohere/",
-    "perplexity/",
-)
-
-
-def normalize_model_name(name: str) -> str:
-    """Strip common provider prefixes from model names.
-
-    OpenRouter uses ``openai/gpt-5``, ``anthropic/claude-sonnet-4-6``, etc.
-    Direct API calls use bare names like ``gpt-5``, ``claude-sonnet-4-6``.
-    This strips the provider prefix so policy matching works for both styles.
-    """
-    for prefix in _PROVIDER_PREFIXES:
-        if name.startswith(prefix):
-            return name[len(prefix) :]
-    return name
-
-
 def check_model(name: str) -> tuple[ModelTier, str]:
     """Return the tier and a human-readable message for a model name.
 
     Uses fnmatch patterns so ``claude-sonnet-4-6`` matches
-    ``claude-sonnet-4*``.  Provider prefixes (``openai/``, ``anthropic/``,
-    etc.) are stripped automatically so both OpenRouter-style and bare
-    model names work.  Unknown models return ``(ModelTier.UNKNOWN, guidance)``.
+    ``claude-sonnet-4*`` and ``anthropic/claude-sonnet-4-6`` matches
+    ``anthropic/claude-sonnet-4*``.  Both bare and provider-prefixed
+    names are matched directly.  Unknown models return
+    ``(ModelTier.UNKNOWN, guidance)``.
     """
-    normalized = normalize_model_name(name)
     for pattern in RECOMMENDED:
-        if fnmatch.fnmatch(normalized, pattern):
+        if fnmatch.fnmatch(name, pattern):
             return (
                 ModelTier.RECOMMENDED,
                 f"{name!r} is in the recommended tier. "
                 "Fully tested for XML and steering anchor compliance.",
             )
     for pattern in SUPPORTED:
-        if fnmatch.fnmatch(normalized, pattern):
+        if fnmatch.fnmatch(name, pattern):
             return (
                 ModelTier.SUPPORTED,
                 f"{name!r} is in the supported tier. "
                 "Expected to work; calibrate for production use.",
             )
     for pattern in EXPERIMENTAL:
-        if fnmatch.fnmatch(normalized, pattern):
+        if fnmatch.fnmatch(name, pattern):
             return (
                 ModelTier.EXPERIMENTAL,
                 f"{name!r} is in the experimental tier. "
                 "Calibrate against reference suites before relying on it.",
             )
     for pattern in DISCOURAGED:
-        if fnmatch.fnmatch(normalized, pattern):
+        if fnmatch.fnmatch(name, pattern):
             return (
                 ModelTier.DISCOURAGED,
                 f"{name!r} is discouraged. Known to drift on XML contracts and steering anchors.",
