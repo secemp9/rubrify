@@ -217,53 +217,33 @@ print(report.passed, report.failed)
 
 ## Providers
 
-### Generic OpenAI-compatible (default)
-
-Works with any OpenAI-compatible endpoint out of the box.
+`Client` auto-detects the provider from your API key:
 
 ```python
-client = rubrify.Client(base_url="http://localhost:8317", api_key="your-key")
+import rubrify
+
+# Auto-detected from key prefix
+client = rubrify.Client(api_key="sk-or-v1-...")       # -> OpenRouter
+client = rubrify.Client(api_key="sk-ant-...")          # -> Anthropic (needs rubrify[anthropic])
+client = rubrify.Client(api_key="sk-...")              # -> OpenAI (needs rubrify[openai])
+
+# Explicit endpoint
+client = rubrify.Client(base_url="http://localhost:8317", api_key="...")
+
+# From environment variables (checks OPENROUTER_API_KEY, ANTHROPIC_API_KEY,
+# OPENAI_API_KEY, then RUBRIFY_BASE_URL + RUBRIFY_API_KEY)
+client = rubrify.Client.from_env()
 ```
 
-### OpenRouter
+Install optional SDK dependencies as needed:
 
-Uses httpx with OpenRouter-specific headers. Model names use OpenRouter format.
-
-```python
-client = rubrify.OpenRouterClient(api_key="sk-or-v1-...")
-
-result = rubric.evaluate(text, client=client, model="anthropic/claude-sonnet-4-6")
+```bash
+pip install rubrify[openai]      # for OpenAI direct
+pip install rubrify[anthropic]   # for Anthropic direct
+pip install rubrify[all]         # both
 ```
 
-### OpenAI direct
-
-Wraps the official `openai` Python SDK. Requires `pip install rubrify[openai]`.
-
-```python
-client = rubrify.OpenAIClient(api_key="sk-...")
-
-result = rubric.evaluate(text, client=client, model="gpt-4o")
-```
-
-### Anthropic direct
-
-Wraps the official `anthropic` Python SDK. Requires `pip install rubrify[anthropic]`.
-
-```python
-client = rubrify.AnthropicClient(api_key="sk-ant-...")
-
-result = rubric.evaluate(text, client=client, model="claude-sonnet-4-6")
-```
-
-### Bring your own client
-
-Any object implementing the `ChatClient` protocol works:
-
-```python
-class MyClient:
-    def chat(self, *, messages, model, temperature=0.0, max_tokens=4096) -> str:
-        ...
-```
+Provider-specific classes (`OpenRouterClient`, `OpenAIClient`, `AnthropicClient`) are also available for direct use when you need provider-specific constructor options.
 
 ---
 

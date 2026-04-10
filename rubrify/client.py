@@ -1,3 +1,20 @@
+"""LLM client layer.
+
+``Client`` is the unified entry point.  When only an ``api_key`` is given
+it auto-detects the provider from the key prefix:
+
+* ``sk-or-``  -> OpenRouter (httpx, provider-specific headers)
+* ``sk-ant-`` -> Anthropic (official SDK, requires ``pip install rubrify[anthropic]``)
+* ``sk-``     -> OpenAI (official SDK, requires ``pip install rubrify[openai]``)
+
+When ``base_url`` is provided the generic OpenAI-compatible httpx path is
+used regardless of key prefix.  Override detection with ``provider=``.
+
+The provider-specific classes (``OpenRouterClient``, ``OpenAIClient``,
+``AnthropicClient``) are still available for direct use when you need
+provider-specific constructor options.
+"""
+
 from __future__ import annotations
 
 import os
@@ -22,20 +39,85 @@ class ChatClient(Protocol):
         ...
 
 
+# ---------------------------------------------------------------------------
+# Provider detection
+# ---------------------------------------------------------------------------
+
+
+def _detect_provider(api_key: str, base_url: str) -> str:
+    """Detect provider from API key prefix.  Returns 'generic' when
+    ``base_url`` is set (caller wants a specific endpoint)."""
+    if base_url:
+        return "generic"
+    if api_key.startswith("sk-or-"):
+        return "openrouter"
+    if api_key.startswith("sk-ant-"):
+        return "anthropic"
+    if api_key.startswith("sk-"):
+        return "openai"
+    return "generic"
+
+
+# ---------------------------------------------------------------------------
+# Unified client
+# ---------------------------------------------------------------------------
+
+
 class Client:
-    """Built-in httpx-based client for OpenAI-compatible APIs."""
+    """Unified LLM client with auto-detection.
+
+    Examples::
+
+        # Auto-detect from API key prefix
+        client = Client(api_key="sk-or-v1-...")       # -> OpenRouter
+        client = Client(api_key="sk-ant-api03-...")    # -> Anthropic
+        client = Client(api_key="sk-proj-...")         # -> OpenAI
+
+        # Explicit base_url -> generic OpenAI-compatible httpx
+        client = Client(base_url="http://localhost:8317", api_key="...")
+
+        # Explicit provider override
+        client = Client(api_key="...", provider="openrouter")
+
+        # From environment variables
+        client = Client.from_env()
+    """
 
     def __init__(
         self,
         base_url: str = "",
         api_key: str = "",
+        *,
+        provider: str = "",
+        **kwargs: Any,
     ) -> None:
-        self.base_url = base_url.rstrip("/")
         self.api_key = api_key
-        self._http = httpx.Client(timeout=120.0)
+        self.base_url = base_url.rstrip("/") if base_url else ""
+        self.provider = provider or _detect_provider(api_key, base_url)
+
+        if self.provider == "openrouter":
+            self._delegate: ChatClient | None = OpenRouterClient(api_key=api_key, **kwargs)
+        elif self.provider == "openai":
+            self._delegate = OpenAIClient(api_key=api_key, **kwargs)
+        elif self.provider == "anthropic":
+            self._delegate = AnthropicClient(api_key=api_key, **kwargs)
+        else:
+            self._delegate = None
+            self._http = httpx.Client(timeout=120.0)
 
     @classmethod
     def from_env(cls) -> Client:
+        """Create a client from environment variables.
+
+        Checks provider-specific env vars first, then falls back to the
+        generic ``RUBRIFY_BASE_URL`` / ``RUBRIFY_API_KEY`` pair.
+        """
+        if os.environ.get("OPENROUTER_API_KEY"):
+            return cls(api_key=os.environ["OPENROUTER_API_KEY"], provider="openrouter")
+        if os.environ.get("ANTHROPIC_API_KEY"):
+            return cls(api_key=os.environ["ANTHROPIC_API_KEY"], provider="anthropic")
+        if os.environ.get("OPENAI_API_KEY"):
+            return cls(api_key=os.environ["OPENAI_API_KEY"], provider="openai")
         return cls(
             base_url=os.environ.get("RUBRIFY_BASE_URL", ""),
             api_key=os.environ.get("RUBRIFY_API_KEY", ""),
@@ -49,6 +131,14 @@ class Client:
         temperature: float = 0.0,
         max_tokens: int = 4096,
     ) -> str:
+        if self._delegate is not None:
+            return self._delegate.chat(
+                messages=messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        # Generic OpenAI-compatible httpx path
         url = f"{self.base_url}/v1/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -67,13 +157,22 @@ class Client:
         return result
 
     def close(self) -> None:
-        self._http.close()
+        if self._delegate is not None:
+            if hasattr(self._delegate, "close"):
+                self._delegate.close()
+        else:
+            self._http.close()
 
     def __enter__(self) -> Client:
         return self
 
     def __exit__(self, *args: object) -> None:
         self.close()
+
+
+# ---------------------------------------------------------------------------
+# Provider-specific clients (for direct use when you need provider kwargs)
+# ---------------------------------------------------------------------------
 
 
 class OpenRouterClient:

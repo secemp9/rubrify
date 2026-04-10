@@ -13,16 +13,19 @@ class TestClientConstruction:
         c = Client()
         assert c.base_url == ""
         assert c.api_key == ""
+        assert c.provider == "generic"
 
-    def test_with_args(self) -> None:
+    def test_with_base_url(self) -> None:
         c = Client(base_url="https://api.example.com/", api_key="sk-test")
         assert c.base_url == "https://api.example.com"  # Trailing slash stripped
         assert c.api_key == "sk-test"
+        assert c.provider == "generic"
 
     def test_from_env(self) -> None:
         with patch.dict(
             os.environ,
             {"RUBRIFY_BASE_URL": "https://api.test.com", "RUBRIFY_API_KEY": "sk-env"},
+            clear=True,
         ):
             c = Client.from_env()
             assert c.base_url == "https://api.test.com"
@@ -37,6 +40,89 @@ class TestClientConstruction:
     def test_context_manager(self) -> None:
         with Client() as c:
             assert isinstance(c, Client)
+
+
+class TestClientAutoDetection:
+    """Client auto-detects provider from API key prefix."""
+
+    def test_generic_with_base_url(self) -> None:
+        c = Client(base_url="http://localhost:8317", api_key="anything")
+        assert c.provider == "generic"
+
+    def test_openrouter_from_key(self) -> None:
+        c = Client(api_key="sk-or-v1-abc123")
+        assert c.provider == "openrouter"
+
+    def test_anthropic_from_key(self) -> None:
+        c = Client(api_key="sk-ant-api03-abc123")
+        assert c.provider == "anthropic"
+
+    def test_openai_from_key(self) -> None:
+        c = Client(api_key="sk-proj-abc123")
+        assert c.provider == "openai"
+
+    def test_explicit_provider_overrides_detection(self) -> None:
+        c = Client(api_key="sk-or-v1-abc", provider="openai")
+        assert c.provider == "openai"
+
+    def test_empty_key_is_generic(self) -> None:
+        c = Client()
+        assert c.provider == "generic"
+
+    def test_unknown_key_is_generic(self) -> None:
+        c = Client(api_key="some-random-key")
+        assert c.provider == "generic"
+
+    def test_base_url_forces_generic_even_with_or_key(self) -> None:
+        c = Client(base_url="http://localhost:8317", api_key="sk-or-v1-abc")
+        assert c.provider == "generic"
+
+    def test_is_chatclient_regardless_of_provider(self) -> None:
+        for key in ["sk-or-v1-abc", "sk-ant-api03-abc", "sk-proj-abc", "generic-key"]:
+            c = Client(api_key=key)
+            assert isinstance(c, ChatClient), f"Client(api_key={key!r}) is not ChatClient"
+
+    def test_from_env_openrouter(self) -> None:
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-v1-test"}, clear=True):
+            c = Client.from_env()
+            assert c.provider == "openrouter"
+
+    def test_from_env_anthropic(self) -> None:
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test"}, clear=True):
+            c = Client.from_env()
+            assert c.provider == "anthropic"
+
+    def test_from_env_openai(self) -> None:
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=True):
+            c = Client.from_env()
+            assert c.provider == "openai"
+
+    def test_from_env_generic_fallback(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"RUBRIFY_BASE_URL": "http://localhost", "RUBRIFY_API_KEY": "key"},
+            clear=True,
+        ):
+            c = Client.from_env()
+            assert c.provider == "generic"
+
+    def test_from_env_priority_order(self) -> None:
+        """OpenRouter takes priority over Anthropic over OpenAI."""
+        with patch.dict(
+            os.environ,
+            {
+                "OPENROUTER_API_KEY": "sk-or-v1-test",
+                "ANTHROPIC_API_KEY": "sk-ant-test",
+                "OPENAI_API_KEY": "sk-test",
+            },
+            clear=True,
+        ):
+            c = Client.from_env()
+            assert c.provider == "openrouter"
+
+    def test_context_manager_with_delegate(self) -> None:
+        with Client(api_key="sk-or-v1-abc") as c:
+            assert c.provider == "openrouter"
 
 
 class TestChatClientProtocol:
