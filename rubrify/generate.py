@@ -73,7 +73,6 @@ def generate(
     max_attempts: int = 1,
     repair_invalid_xml: bool = True,
     return_report: bool = False,
-    warn_unsupported: bool = False,
     **kwargs: Any,
 ) -> Rubric | tuple[Rubric, EvaluationResult] | tuple[Rubric, RefinementReport]:
     """Generate a rubric from source material using the any2rubric pipeline.
@@ -99,11 +98,6 @@ def generate(
     the legacy ``evaluate=True`` tuple return.
     """
     import rubrify
-
-    if warn_unsupported:
-        from rubrify.model_policy import warn_unsupported as _warn_unsupported
-
-        _warn_unsupported(model)
 
     generator = _GENERATORS.get(rubric_type)
     if generator is None:

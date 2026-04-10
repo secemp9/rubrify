@@ -78,7 +78,6 @@ A rubric that judges prose, a rubric that forces a response format, a rubric tha
 - **Constraint runtime** for forcing / transform / extract workflows
 - **Calibration runner** and reference suites
 - **Provenance + refinement reports**
-- **Model policy tiers** (`recommended`, `supported`, `experimental`, `discouraged`)
 - **Reference-faithfulness conformance suite**
 
 ---
@@ -244,40 +243,6 @@ pip install rubrify[all]         # both
 ```
 
 Provider-specific classes (`OpenRouterClient`, `OpenAIClient`, `AnthropicClient`) are also available for direct use when you need provider-specific constructor options.
-
----
-
-## Recommended models
-
-`rubrify` is opinionated about model support.
-
-### Recommended
-- `gpt-5*`
-- `gpt-4.1*`
-- `gpt-4o*`
-- `claude-opus-4*`
-- `claude-sonnet-4*`
-- `claude-haiku-4*`
-- `claude-3-5-sonnet*`
-- `claude-3-opus*`
-
-### Experimental
-Smaller or older OpenAI-compatible models may work, but they often drift on:
-- XML contracts
-- steering anchors
-- schema compliance
-- calibration consistency
-
-Use the model policy helpers if you want runtime warnings:
-
-```python
-result = rubric.evaluate(
-    text,
-    client=client,
-    model="some-model",
-    warn_unsupported=True,
-)
-```
 
 ---
 

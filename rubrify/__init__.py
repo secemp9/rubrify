@@ -78,15 +78,6 @@ from rubrify.input_render import (
     TemplateRenderer,
     validate_payload,
 )
-from rubrify.model_policy import (
-    DISCOURAGED,
-    EXPERIMENTAL,
-    RECOMMENDED,
-    SUPPORTED,
-    ModelTier,
-    check_model,
-    warn_unsupported,
-)
 from rubrify.provenance import RefinementReport, RefinementStep, RubricProvenance
 from rubrify.repair import (
     RepairResult,
@@ -201,14 +192,6 @@ __all__ = [
     "improve_text",
     "ImproveReport",
     "default_advice_extractor",
-    # Phase 5: model policy
-    "ModelTier",
-    "check_model",
-    "warn_unsupported",
-    "RECOMMENDED",
-    "SUPPORTED",
-    "EXPERIMENTAL",
-    "DISCOURAGED",
     # Phase 5: behavior-oriented generation helpers
     "generate_evaluator",
     "generate_detector",
