@@ -1,22 +1,21 @@
-"""Rubric XML excerpts and canonical ConstraintRubric examples.
+"""Rubric XML excerpts and canonical constraint-style Rubric examples.
 
 This module hosts two kinds of examples:
 
 - **XML excerpts** (``ZINSSER_V3_EXCERPT`` et al.) — string constants used as
   few-shot anchors by the meta-rubric generators in ``_meta_rubric.py``.
 
-- **Canonical ConstraintRubric instances** (``COMPLETENESS_EXAMPLE``,
+- **Canonical Rubric instances** (``COMPLETENESS_EXAMPLE``,
   ``EXTRACTION_EXAMPLE``, ``TRANSFORM_EXAMPLE``) — Phase 2 deliverable.
-  These are library-level, reference-derived ConstraintRubrics that
+  These are library-level, reference-derived Rubrics that
   demonstrate the three non-scoring constraint behaviors the references
   exhibit: forcing a specific output structure, extracting structured
-  entities, and rewriting input via a template. They exist so downstream
-  users can cite a concrete starting point for each behavior family.
+  entities, and rewriting input via a template.
 """
 
 from rubrify._types import ICLExample
 from rubrify.input_render import TemplateRenderer
-from rubrify.rubric import ConstraintRubric
+from rubrify.rubric import Rubric
 
 ZINSSER_V3_EXCERPT = """\
 <LLM_JUDGE_SPEC version="3.0" name="ZinsserJudge-XXL">
@@ -174,7 +173,7 @@ COMPLIANCE_JUDGE_EXCERPT = """\
 </LLM_JUDGE_SPEC>"""
 
 
-# ── Phase 2: canonical ConstraintRubric examples ───────────────────────
+# ── Phase 2: canonical constraint-style Rubric examples ────────────────
 #
 # These are reference-derived exemplars, one per non-scoring constraint
 # behaviour family. They compose multiple ``behaviors`` tags where the
@@ -182,7 +181,7 @@ COMPLIANCE_JUDGE_EXCERPT = """\
 # a ``transform``). ``behaviors`` is metadata only — the three instances
 # here execute through the exact same runtime path.
 
-COMPLETENESS_EXAMPLE: ConstraintRubric = ConstraintRubric(
+COMPLETENESS_EXAMPLE: Rubric = Rubric(
     name="CompletenessForcingExample",
     instructions=(
         "You are an assistant whose sole purpose is to provide all answers in valid XML. "
@@ -216,7 +215,7 @@ COMPLETENESS_EXAMPLE: ConstraintRubric = ConstraintRubric(
     ],
     behaviors=frozenset({"force", "transform"}),
 )
-"""Completeness-style forcing ConstraintRubric.
+"""Completeness-style forcing Rubric.
 
 Mirrors ``references/main/rubrics/special_ones/completeness_rubric.md``:
 forces every response into a ``<response>`` wrapper with a
@@ -224,7 +223,7 @@ forces every response into a ``<response>`` wrapper with a
 the full, unabridged code. Declared behaviors: ``force`` and ``transform``.
 """
 
-EXTRACTION_EXAMPLE: ConstraintRubric = ConstraintRubric(
+EXTRACTION_EXAMPLE: Rubric = Rubric(
     name="StructuredExtractionExample",
     instructions=(
         "Extract structured entities from the provided unstructured text. "
@@ -252,13 +251,13 @@ EXTRACTION_EXAMPLE: ConstraintRubric = ConstraintRubric(
     ],
     behaviors=frozenset({"extract"}),
 )
-"""Structured-extraction ConstraintRubric.
+"""Structured-extraction Rubric.
 
 Pulls people, organizations, dates, and locations out of unstructured text
 into a flat JSON object. Declared behavior: ``extract``.
 """
 
-TRANSFORM_EXAMPLE: ConstraintRubric = ConstraintRubric(
+TRANSFORM_EXAMPLE: Rubric = Rubric(
     name="TransformationTemplateExample",
     instructions=(
         "Rewrite the user's content in the requested target style while "
@@ -279,7 +278,7 @@ TRANSFORM_EXAMPLE: ConstraintRubric = ConstraintRubric(
     ],
     behaviors=frozenset({"transform"}),
 )
-"""Transformation ConstraintRubric that uses ``TemplateRenderer``.
+"""Transformation Rubric that uses ``TemplateRenderer``.
 
 The template substitutes ``{style}`` and ``{content}`` placeholders into a
 prompt that asks the model to rewrite ``{content}`` in ``{style}``. Callers

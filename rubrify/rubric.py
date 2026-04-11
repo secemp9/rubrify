@@ -27,6 +27,33 @@ if TYPE_CHECKING:
     from rubrify.repair import RepairResult
 
 
+# ---------------------------------------------------------------------------
+# Canonical constraint-behavior taxonomy (moved from _behaviors.py)
+# ---------------------------------------------------------------------------
+
+CONSTRAINT_BEHAVIORS: frozenset[str] = frozenset(
+    {
+        "judge",
+        "score",
+        "detect",
+        "force",
+        "transform",
+        "extract",
+        "calibrate",
+    }
+)
+"""The seven canonical constraint behaviors.
+
+``behaviors`` is a ``frozenset[str]`` on ``Rubric``. It composes:
+a single rubric may carry any subset of these tags (for example
+``{"force", "transform"}`` for a completeness-style rubric that both forces
+a specific output shape and rewrites the input into it).
+
+**Guard rail 3 (no metadata-driven dispatch) is binding.** Runtime never
+branches on ``behaviors``. These tags are documentation only.
+"""
+
+
 def _infer_parser_kind(schema: OutputSchema | None) -> str:
     """Return the parser label used by ``EvaluationTrace``."""
     if schema is None:
@@ -44,10 +71,17 @@ class Rubric:
         name: str = "",
         version: str = "1.0",
         mission: str = "",
+        *,
+        instructions: str = "",
+        output_format: str = "",
+        examples: list[ICLExample] | None = None,
+        behaviors: frozenset[str] = frozenset(),
+        validators: list[Callable[[str], tuple[bool, str | None]]] | None = None,
     ) -> None:
         self.name = name
         self.version = version
         self.mission = mission
+        # Scoring-rubric fields
         self.inputs: list[InputField] = []
         self.criteria: dict[str, Criterion] = {}
         self.disqualifiers: list[Disqualifier] = []
@@ -58,10 +92,19 @@ class Rubric:
         self.advice_rules: list[AdviceRule] = []
         self.mapping_examples: list[MappingExample] = []
         self.validation_musts: list[ValidationMust] = []
-        self.definitions: dict[str, str] = {}  # For ComplianceJudge <definitions>
-        self.what_to_judge: str = ""  # For ComplianceJudge <what_to_judge>
-        self.scoring_guidance: str = ""  # For ComplianceJudge <scoring_guidance>
-        self.input_renderer: InputRenderer | None = None  # Phase 1: optional user-msg renderer
+        self.definitions: dict[str, str] = {}
+        self.what_to_judge: str = ""
+        self.scoring_guidance: str = ""
+        # Constraint-rubric fields (merged from ConstraintRubric)
+        self.instructions: str = instructions
+        self.output_format_str: str = output_format
+        self.examples: list[ICLExample] = examples or []
+        self.behaviors: frozenset[str] = behaviors
+        self.validators: list[Callable[[str], tuple[bool, str | None]]] = (
+            list(validators) if validators is not None else []
+        )
+        # Shared fields
+        self.input_renderer: InputRenderer | None = None
         # Phase 4: optional lineage metadata. NEVER emitted in to_xml().
         self.provenance: RubricProvenance | None = None
 
@@ -250,133 +293,7 @@ class Rubric:
         """Evaluate multiple texts sequentially."""
         return [self.evaluate(text, client=client, model=model, **kwargs) for text in texts]
 
-    def save(self, path: str) -> None:
-        from pathlib import Path
-
-        Path(path).write_text(self.to_xml(), encoding="utf-8")
-
-    def export_provenance(self, path: str) -> None:
-        """Write ``self.provenance`` to a sidecar JSON file at ``path``.
-
-        Phase 4: provenance is runtime metadata and does not belong in
-        canonical XML (guard rail 5). Callers who want to persist a
-        rubric's lineage alongside its XML emit a sidecar JSON file via
-        this method. Raises ``ValueError`` if no provenance has been
-        attached — guard rail 6 forbids silent no-ops.
-        """
-        from pathlib import Path
-
-        if self.provenance is None:
-            raise ValueError(
-                f"Rubric {self.name!r} has no provenance to export; "
-                "attach a RubricProvenance before calling export_provenance"
-            )
-        payload = json.dumps(self.provenance.to_dict(), indent=2)
-        Path(path).write_text(payload, encoding="utf-8")
-
-    def __or__(self, other: Rubric) -> Rubric:
-        """Criteria union: merge two rubrics. Second wins on ID conflicts."""
-        result = self.copy()
-        # Criteria union (second wins conflicts)
-        for cid, crit in other.criteria.items():
-            result.criteria[cid] = copy.deepcopy(crit)
-        # DQ union
-        existing_dq_ids = {dq.id for dq in result.disqualifiers}
-        for dq in other.disqualifiers:
-            if dq.id not in existing_dq_ids:
-                result.disqualifiers.append(copy.deepcopy(dq))
-        # Mission concat
-        if other.mission:
-            if result.mission:
-                result.mission = result.mission + " " + other.mission
-            else:
-                result.mission = other.mission
-        # Merge pattern libraries
-        if other.pattern_library:
-            if result.pattern_library is None:
-                result.pattern_library = copy.deepcopy(other.pattern_library)
-            else:
-                for pid, pat in other.pattern_library.entries.items():
-                    result.pattern_library.entries[pid] = pat
-                    if pid in other.pattern_library._entry_types:
-                        result.pattern_library._entry_types[pid] = (
-                            other.pattern_library._entry_types[pid]
-                        )
-        return result
-
-    def __and__(self, other: Rubric) -> ParallelRubric:
-        """Parallel evaluation against both rubrics."""
-        return ParallelRubric([self, other])
-
-    def project(self, criterion_ids: set[str]) -> Rubric:
-        """Project to a subset of criteria. IDs not found are silently ignored."""
-        result = self.copy()
-        result.criteria = {
-            cid: crit for cid, crit in result.criteria.items() if cid in criterion_ids
-        }
-        return result
-
-    def reweight(self, weights: dict[str, int]) -> Rubric:
-        """Return a copy with updated criterion weights."""
-        result = self.copy()
-        for cid, new_weight in weights.items():
-            if cid in result.criteria:
-                result.criteria[cid].weight = new_weight
-        return result
-
-    def evolve(self, mutations: list[Any]) -> Rubric:
-        """Apply a sequence of mutations and bump version."""
-        from rubrify._mutations import _bump_version
-
-        result = self.copy()
-        for mutation in mutations:
-            mutation.apply(result)
-        result.version = _bump_version(result.version)
-        return result
-
-    def __repr__(self) -> str:
-        return (
-            f"Rubric(name={self.name!r}, version={self.version!r}, criteria={len(self.criteria)})"
-        )
-
-
-class ConstraintRubric:
-    """Behavioral constraint rubric (no scoring). Uses instructions + ICL examples.
-
-    Phase 2 enrichment: carries a ``behaviors`` frozenset of metadata tags
-    (``judge``, ``score``, ``detect``, ``force``, ``transform``, ``extract``,
-    ``calibrate``) describing what the rubric *claims* to do, and a list of
-    local ``validators`` that can post-hoc check the raw model output.
-
-    **``behaviors`` is metadata only.** Behaviors compose — a rubric may carry
-    any subset of the seven canonical values (see ``rubrify._behaviors`` for
-    the full taxonomy and reference citations). Guard rail 3 of
-    ``PHILOSOPHY.md`` is binding: the runtime never branches on ``behaviors``.
-    Two rubrics that differ only in their ``behaviors`` frozenset execute
-    through identical code paths.
-    """
-
-    def __init__(
-        self,
-        name: str = "",
-        instructions: str = "",
-        output_format: str = "",
-        examples: list[ICLExample] | None = None,
-        *,
-        behaviors: frozenset[str] = frozenset(),
-        validators: list[Callable[[str], tuple[bool, str | None]]] | None = None,
-    ) -> None:
-        self.name = name
-        self.instructions = instructions
-        self.output_format = output_format
-        self.examples: list[ICLExample] = examples or []
-        self.input_renderer: InputRenderer | None = None  # Phase 1: optional renderer
-        # Phase 2: metadata-only behavior tags; never drives dispatch.
-        self.behaviors: frozenset[str] = behaviors
-        # Phase 2: local structural validators run on the raw model output.
-        self.validators: list[Callable[[str], tuple[bool, str | None]]] = (
-            list(validators) if validators is not None else []
-        )
+    # ── Constraint-style apply methods (merged from ConstraintRubric) ────
 
     @overload
     def apply(
@@ -466,13 +383,7 @@ class ConstraintRubric:
         return parsed
 
     def validate_output(self, output: str) -> tuple[bool, list[str]]:
-        """Run every registered validator on ``output`` and aggregate violations.
-
-        Each validator returns ``(is_valid, message | None)``. Returns
-        ``(all_valid, violations)`` where ``violations`` is the list of
-        non-``None`` messages collected from failing validators. If no
-        validators are registered the call returns ``(True, [])``.
-        """
+        """Run every registered validator on ``output`` and aggregate violations."""
         violations: list[str] = []
         for validator in self.validators:
             is_valid, message = validator(output)
@@ -494,9 +405,6 @@ class ConstraintRubric:
 
         Returns a :class:`ConstraintResult` with ``output``, ``valid``,
         ``violations``, and (when ``observe=True``) ``trace`` populated.
-        Validators operate on the raw string output; ``parse_as`` is therefore
-        not accepted here. Callers who need parsed payloads should use
-        :meth:`apply` directly.
         """
         if "parse_as" in kwargs:
             raise TypeError(
@@ -526,7 +434,7 @@ class ConstraintRubric:
 
         if not isinstance(output_value, str):
             raise TypeError(
-                "apply_and_validate expects ConstraintRubric.apply to return a string; "
+                "apply_and_validate expects apply to return a string; "
                 f"got {type(output_value).__name__}"
             )
 
@@ -547,16 +455,7 @@ class ConstraintRubric:
         repair_fn: Callable[[str], RepairResult] | None = None,
         **kwargs: Any,
     ) -> ConstraintResult:
-        """Apply, validate, and optionally run a *local* repair function on failure.
-
-        If validation passes, the initial :class:`ConstraintResult` is returned
-        unchanged. If validation fails and ``repair_fn`` is provided, the
-        function is called with the raw output and must return a
-        :class:`rubrify.repair.RepairResult`. The repaired text is revalidated
-        and a new :class:`ConstraintResult` is returned with ``repaired`` and
-        ``repair_notes`` populated from the repair result. ``repair_fn`` is
-        strictly local — no model-assisted repair.
-        """
+        """Apply, validate, and optionally run a *local* repair function on failure."""
         initial = self.apply_and_validate(text, client=client, model=model, **kwargs)
         if initial.valid or repair_fn is None:
             return initial
@@ -572,47 +471,118 @@ class ConstraintRubric:
             trace=initial.trace,
         )
 
-    def to_xml(self) -> str:
-        """Serialize to XML system prompt format."""
-        from rubrify.xml_io import constraint_rubric_to_xml
+    # ── Persistence ──────────────────────────────────────────────────────
 
-        return constraint_rubric_to_xml(self)
+    def save(self, path: str) -> None:
+        from pathlib import Path
+
+        Path(path).write_text(self.to_xml(), encoding="utf-8")
+
+    def export_provenance(self, path: str) -> None:
+        """Write ``self.provenance`` to a sidecar JSON file at ``path``."""
+        from pathlib import Path
+
+        if self.provenance is None:
+            raise ValueError(
+                f"Rubric {self.name!r} has no provenance to export; "
+                "attach a RubricProvenance before calling export_provenance"
+            )
+        payload = json.dumps(self.provenance.to_dict(), indent=2)
+        Path(path).write_text(payload, encoding="utf-8")
+
+    # ── Algebra ──────────────────────────────────────────────────────────
+
+    def __or__(self, other: Rubric) -> Rubric:
+        """Criteria union: merge two rubrics. Second wins on ID conflicts."""
+        result = self.copy()
+        # Criteria union (second wins conflicts)
+        for cid, crit in other.criteria.items():
+            result.criteria[cid] = copy.deepcopy(crit)
+        # DQ union
+        existing_dq_ids = {dq.id for dq in result.disqualifiers}
+        for dq in other.disqualifiers:
+            if dq.id not in existing_dq_ids:
+                result.disqualifiers.append(copy.deepcopy(dq))
+        # Mission concat
+        if other.mission:
+            if result.mission:
+                result.mission = result.mission + " " + other.mission
+            else:
+                result.mission = other.mission
+        # Merge pattern libraries
+        if other.pattern_library:
+            if result.pattern_library is None:
+                result.pattern_library = copy.deepcopy(other.pattern_library)
+            else:
+                for pid, pat in other.pattern_library.entries.items():
+                    result.pattern_library.entries[pid] = pat
+                    if pid in other.pattern_library._entry_types:
+                        result.pattern_library._entry_types[pid] = (
+                            other.pattern_library._entry_types[pid]
+                        )
+        return result
+
+    def project(self, criterion_ids: set[str]) -> Rubric:
+        """Project to a subset of criteria. IDs not found are silently ignored."""
+        result = self.copy()
+        result.criteria = {
+            cid: crit for cid, crit in result.criteria.items() if cid in criterion_ids
+        }
+        return result
+
+    def reweight(self, weights: dict[str, int]) -> Rubric:
+        """Return a copy with updated criterion weights."""
+        result = self.copy()
+        for cid, new_weight in weights.items():
+            if cid in result.criteria:
+                result.criteria[cid].weight = new_weight
+        return result
+
+    def evolve(self, mutations: list[Any]) -> Rubric:
+        """Apply a sequence of mutations and bump version."""
+        from rubrify._mutations import _bump_version
+
+        result = self.copy()
+        for mutation in mutations:
+            mutation.apply(result)
+        result.version = _bump_version(result.version)
+        return result
 
     def __repr__(self) -> str:
-        return f"ConstraintRubric(name={self.name!r}, examples={len(self.examples)})"
+        if self.criteria:
+            return (
+                f"Rubric(name={self.name!r}, version={self.version!r}, "
+                f"criteria={len(self.criteria)})"
+            )
+        return f"Rubric(name={self.name!r}, examples={len(self.examples)})"
 
 
-class ParallelRubric:
-    """Evaluate text against multiple rubrics simultaneously. Returns list of results.
-
-    Reference: the user's test_build.py demonstrated evaluating the same text
-    with both ZinsserJudge and AntiSlop in parallel.
-    """
-
-    def __init__(self, rubrics: list[Rubric]) -> None:
-        self.rubrics = rubrics
-
-    def evaluate(
-        self, text: str, *, client: Any, model: str, **kwargs: Any
-    ) -> list[EvaluationResult]:
-        return [r.evaluate(text, client=client, model=model, **kwargs) for r in self.rubrics]
+# ---------------------------------------------------------------------------
+# Standalone evaluation functions (replacing ParallelRubric/ConditionalRubric)
+# ---------------------------------------------------------------------------
 
 
-class ConditionalRubric:
-    """Dispatch evaluation to one of several rubrics based on a selector function.
+def evaluate_parallel(
+    rubrics: list[Rubric],
+    text: str,
+    *,
+    client: Any,
+    model: str,
+    **kwargs: Any,
+) -> list[EvaluationResult]:
+    """Evaluate text against multiple rubrics. Returns list of results."""
+    return [r.evaluate(text, client=client, model=model, **kwargs) for r in rubrics]
 
-    Reference: genre-based evaluation where different genre criteria apply
-    to different texts.
-    """
 
-    def __init__(
-        self,
-        rubrics: dict[str, Rubric],
-        selector: Callable[..., str],
-    ) -> None:
-        self.rubrics = rubrics
-        self.selector = selector
-
-    def evaluate(self, text: str, *, client: Any, model: str, **kwargs: Any) -> EvaluationResult:
-        key = self.selector(text, **kwargs)
-        return self.rubrics[key].evaluate(text, client=client, model=model, **kwargs)
+def evaluate_conditional(
+    rubrics: dict[str, Rubric],
+    selector: Callable[..., str],
+    text: str,
+    *,
+    client: Any,
+    model: str,
+    **kwargs: Any,
+) -> EvaluationResult:
+    """Dispatch evaluation to one rubric based on a selector function."""
+    key = selector(text, **kwargs)
+    return rubrics[key].evaluate(text, client=client, model=model, **kwargs)

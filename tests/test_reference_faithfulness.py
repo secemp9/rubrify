@@ -58,7 +58,7 @@ from rubrify.calibration import (
     run_meta_evaluator_self_calibration,
 )
 from rubrify.input_render import ConversationJudgeRenderer
-from rubrify.rubric import ConstraintRubric, Rubric
+from rubrify.rubric import Rubric
 from rubrify.xml_io import rubric_from_xml
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -718,10 +718,10 @@ class TestComplianceJudgePythonReproduction:
 
 
 class TestCompletenessForcing:
-    """Forcing-style ConstraintRubric behavior."""
+    """Forcing-style constraint Rubric behavior."""
 
     def test_completeness_example_loads(self) -> None:
-        assert isinstance(COMPLETENESS_EXAMPLE, ConstraintRubric)
+        assert isinstance(COMPLETENESS_EXAMPLE, Rubric)
         assert "force" in COMPLETENESS_EXAMPLE.behaviors
         assert "transform" in COMPLETENESS_EXAMPLE.behaviors
 

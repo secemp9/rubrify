@@ -34,7 +34,7 @@ from rubrify.calibration import (
     summarize_report,
 )
 from rubrify.result import ConstraintResult, EvaluationResult
-from rubrify.rubric import ConstraintRubric, Rubric
+from rubrify.rubric import Rubric
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -68,11 +68,13 @@ class _FakeRubric(Rubric):
         return self._canned
 
 
-class _FakeConstraintRubric(ConstraintRubric):
-    """A ``ConstraintRubric`` subclass whose ``apply_and_validate`` is preset."""
+class _FakeConstraintRubric(Rubric):
+    """A ``Rubric`` subclass with validators whose ``apply_and_validate`` is preset."""
 
     def __init__(self, canned: ConstraintResult) -> None:
-        super().__init__(name="fake-constraint", instructions="test")
+        super().__init__(
+            name="fake-constraint", instructions="test", validators=[lambda _: (True, None)]
+        )
         self._canned = canned
 
     def apply_and_validate(  # type: ignore[override]

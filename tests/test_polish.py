@@ -153,7 +153,7 @@ class TestToJson:
 
 class TestParseAs:
     def test_apply_parse_as_json(self) -> None:
-        cr = rubrify.ConstraintRubric(
+        cr = rubrify.Rubric(
             name="TestGen",
             instructions="Generate.",
         )
@@ -166,7 +166,7 @@ class TestParseAs:
         assert result["count"] == 42
 
     def test_apply_without_parse_as_returns_string(self) -> None:
-        cr = rubrify.ConstraintRubric(
+        cr = rubrify.Rubric(
             name="TestGen",
             instructions="Generate.",
         )
@@ -177,7 +177,7 @@ class TestParseAs:
         assert result == "raw text response"
 
     def test_apply_parse_as_none_returns_string(self) -> None:
-        cr = rubrify.ConstraintRubric(
+        cr = rubrify.Rubric(
             name="TestGen",
             instructions="Generate.",
         )

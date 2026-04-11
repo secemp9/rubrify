@@ -18,16 +18,11 @@ import rubrify
 from rubrify._examples import COMPLETENESS_EXAMPLE
 from rubrify.repair import RepairResult
 from rubrify.result import ConstraintResult, EvaluationTrace
-from rubrify.xml_io import constraint_rubric_from_xml, constraint_rubric_to_xml
+from rubrify.xml_io import rubric_from_xml
 
 
 def _strip_behaviors_tag(xml: str) -> str:
-    """Remove the metadata-only ``<behaviors>...</behaviors>`` element from XML.
-
-    Used in the ``behaviors`` dispatch guarantee test: after stripping the
-    metadata tag, two system prompts that differ only in their behaviors
-    frozenset must be byte-for-byte identical.
-    """
+    """Remove the metadata-only ``<behaviors>...</behaviors>`` element from XML."""
     return re.sub(r"\s*<behaviors>[^<]*</behaviors>\s*", "", xml)
 
 
@@ -59,50 +54,40 @@ class MockClient:
 
 class TestBehaviorsMetadata:
     def test_behaviors_frozenset_default(self) -> None:
-        cr = rubrify.ConstraintRubric(name="X", instructions="do a thing")
+        cr = rubrify.Rubric(name="X", instructions="do a thing")
         assert isinstance(cr.behaviors, frozenset)
         assert cr.behaviors == frozenset()
 
     def test_behaviors_immutable(self) -> None:
-        cr = rubrify.ConstraintRubric(
+        cr = rubrify.Rubric(
             name="X",
             instructions="do a thing",
             behaviors=frozenset({"force"}),
         )
-        # frozenset has no mutation API; add/discard should be absent.
         assert not hasattr(cr.behaviors, "add")
         assert not hasattr(cr.behaviors, "discard")
-        # Constructing a new set is allowed but must not mutate the original.
         new = cr.behaviors | {"transform"}
         assert cr.behaviors == frozenset({"force"})
         assert new == frozenset({"force", "transform"})
 
     def test_behaviors_compose(self) -> None:
-        cr = rubrify.ConstraintRubric(
+        cr = rubrify.Rubric(
             name="Composite",
             instructions="do many things",
             behaviors=frozenset({"force", "transform", "extract"}),
         )
         assert cr.behaviors == frozenset({"force", "transform", "extract"})
-        # Every declared value must be in the canonical taxonomy.
         assert cr.behaviors <= rubrify.CONSTRAINT_BEHAVIORS
 
     def test_behaviors_not_dispatched(self) -> None:
-        """Two rubrics that differ only in ``behaviors`` must execute identically.
-
-        Guard rail 3 of PHILOSOPHY.md: runtime never branches on metadata.
-        After stripping the metadata-only ``<behaviors>`` tag from the
-        emitted system prompt, the two prompts must be byte-for-byte
-        identical. The user message and the client call count must match
-        as well.
-        """
-        cr_a = rubrify.ConstraintRubric(
+        """Two rubrics that differ only in ``behaviors`` must execute identically."""
+        cr_a = rubrify.Rubric(
             name="Same",
             instructions="do the thing",
             output_format="raw",
             behaviors=frozenset({"judge"}),
         )
-        cr_b = rubrify.ConstraintRubric(
+        cr_b = rubrify.Rubric(
             name="Same",
             instructions="do the thing",
             output_format="raw",
@@ -114,19 +99,12 @@ class TestBehaviorsMetadata:
         out_a = cr_a.apply("hello", client=client_a, model="m")
         out_b = cr_b.apply("hello", client=client_b, model="m")
 
-        # Same client call count — no extra pre/post hooks.
         assert client_a.call_count == client_b.call_count == 1
-
-        # Same raw outputs are returned through the same code path.
         assert out_a == "output A"
         assert out_b == "output B"
-
-        # Same user message (behaviors never touches the user message).
         assert (
             client_a.last_messages[1]["content"] == client_b.last_messages[1]["content"] == "hello"
         )
-
-        # Same system prompt after stripping the metadata-only <behaviors> tag.
         sys_a = _strip_behaviors_tag(client_a.last_messages[0]["content"])
         sys_b = _strip_behaviors_tag(client_b.last_messages[0]["content"])
         assert sys_a == sys_b
@@ -143,7 +121,7 @@ class TestBehaviorsMetadata:
 
 class TestValidateOutput:
     def test_validate_output_empty_validators(self) -> None:
-        cr = rubrify.ConstraintRubric(name="X", instructions="x")
+        cr = rubrify.Rubric(name="X", instructions="x")
         valid, violations = cr.validate_output("anything at all")
         assert valid is True
         assert violations == []
@@ -152,7 +130,7 @@ class TestValidateOutput:
         def always_pass(_: str) -> tuple[bool, str | None]:
             return (True, None)
 
-        cr = rubrify.ConstraintRubric(name="X", instructions="x", validators=[always_pass])
+        cr = rubrify.Rubric(name="X", instructions="x", validators=[always_pass])
         valid, violations = cr.validate_output("hello")
         assert valid is True
         assert violations == []
@@ -161,7 +139,7 @@ class TestValidateOutput:
         def always_fail(_: str) -> tuple[bool, str | None]:
             return (False, "nope")
 
-        cr = rubrify.ConstraintRubric(name="X", instructions="x", validators=[always_fail])
+        cr = rubrify.Rubric(name="X", instructions="x", validators=[always_fail])
         valid, violations = cr.validate_output("hello")
         assert valid is False
         assert violations == ["nope"]
@@ -176,7 +154,7 @@ class TestValidateOutput:
         def v_fail_2(_: str) -> tuple[bool, str | None]:
             return (False, "missing tag B")
 
-        cr = rubrify.ConstraintRubric(
+        cr = rubrify.Rubric(
             name="X",
             instructions="x",
             validators=[v_pass, v_fail_1, v_fail_2],
@@ -210,7 +188,7 @@ class TestApplyAndValidate:
             "</full_entire_complete_updated_code_in_a_code_block_here>\n"
             "</response>"
         )
-        cr = rubrify.ConstraintRubric(
+        cr = rubrify.Rubric(
             name="Forcer",
             instructions="force structure",
             validators=[_has_response_wrapper, _has_code_block_tag],
@@ -229,7 +207,7 @@ class TestApplyAndValidate:
 
     def test_apply_and_validate_failing(self) -> None:
         bad = "Sure thing! Here is the code: print('hi')"
-        cr = rubrify.ConstraintRubric(
+        cr = rubrify.Rubric(
             name="Forcer",
             instructions="force structure",
             validators=[_has_response_wrapper, _has_code_block_tag],
@@ -244,7 +222,7 @@ class TestApplyAndValidate:
         assert result.output == bad
 
     def test_apply_and_validate_with_observe(self) -> None:
-        cr = rubrify.ConstraintRubric(
+        cr = rubrify.Rubric(
             name="X",
             instructions="do",
             validators=[lambda s: (True, None)],
@@ -259,7 +237,7 @@ class TestApplyAndValidate:
         assert result.trace.user_message == "input"
 
     def test_apply_and_validate_rejects_parse_as(self) -> None:
-        cr = rubrify.ConstraintRubric(name="X", instructions="do")
+        cr = rubrify.Rubric(name="X", instructions="do")
         client = MockClient("output")
         with pytest.raises(TypeError, match="parse_as"):
             cr.apply_and_validate("input", client=client, model="m", parse_as="json")
@@ -270,7 +248,7 @@ class TestApplyAndValidate:
 
 class TestApplyWithRepair:
     def test_apply_with_repair_no_repair_fn(self) -> None:
-        cr = rubrify.ConstraintRubric(
+        cr = rubrify.Rubric(
             name="X",
             instructions="do",
             validators=[_has_response_wrapper],
@@ -284,7 +262,7 @@ class TestApplyWithRepair:
         assert result.output == "no wrapper here"
 
     def test_apply_with_repair_skips_when_valid(self) -> None:
-        cr = rubrify.ConstraintRubric(
+        cr = rubrify.Rubric(
             name="X",
             instructions="do",
             validators=[_has_response_wrapper],
@@ -301,7 +279,7 @@ class TestApplyWithRepair:
         assert result.repaired is False
 
     def test_apply_with_repair_with_repair_fn(self) -> None:
-        cr = rubrify.ConstraintRubric(
+        cr = rubrify.Rubric(
             name="X",
             instructions="do",
             validators=[_has_response_wrapper],
@@ -329,32 +307,31 @@ class TestApplyWithRepair:
 
 class TestXMLBehaviorsRoundTrip:
     def test_xml_roundtrip_with_behaviors(self) -> None:
-        cr = rubrify.ConstraintRubric(
+        cr = rubrify.Rubric(
             name="RoundTrip",
             instructions="force the shape",
             output_format="<foo/>",
             behaviors=frozenset({"force", "transform"}),
         )
-        xml = constraint_rubric_to_xml(cr)
+        xml = cr.to_xml()
         assert "<behaviors>" in xml
-        # space-separated, sorted
         assert "force transform" in xml
 
-        restored = constraint_rubric_from_xml(xml)
+        restored = rubric_from_xml(xml)
         assert restored.name == "RoundTrip"
         assert restored.instructions == "force the shape"
-        assert restored.output_format == "<foo/>"
+        assert restored.output_format_str == "<foo/>"
         assert restored.behaviors == frozenset({"force", "transform"})
 
     def test_xml_roundtrip_without_behaviors(self) -> None:
-        cr = rubrify.ConstraintRubric(
+        cr = rubrify.Rubric(
             name="Plain",
             instructions="just do the thing",
         )
-        xml = constraint_rubric_to_xml(cr)
+        xml = cr.to_xml()
         assert "<behaviors>" not in xml
 
-        restored = constraint_rubric_from_xml(xml)
+        restored = rubric_from_xml(xml)
         assert restored.name == "Plain"
         assert restored.instructions == "just do the thing"
         assert restored.behaviors == frozenset()
@@ -384,16 +361,16 @@ class TestConstraintResult:
 
 class TestExampleConstants:
     def test_completeness_example_shape(self) -> None:
-        assert isinstance(rubrify.COMPLETENESS_EXAMPLE, rubrify.ConstraintRubric)
+        assert isinstance(rubrify.COMPLETENESS_EXAMPLE, rubrify.Rubric)
         assert "force" in rubrify.COMPLETENESS_EXAMPLE.behaviors
         assert "transform" in rubrify.COMPLETENESS_EXAMPLE.behaviors
 
     def test_extraction_example_shape(self) -> None:
-        assert isinstance(rubrify.EXTRACTION_EXAMPLE, rubrify.ConstraintRubric)
+        assert isinstance(rubrify.EXTRACTION_EXAMPLE, rubrify.Rubric)
         assert rubrify.EXTRACTION_EXAMPLE.behaviors == frozenset({"extract"})
 
     def test_transform_example_has_template_renderer(self) -> None:
-        assert isinstance(rubrify.TRANSFORM_EXAMPLE, rubrify.ConstraintRubric)
+        assert isinstance(rubrify.TRANSFORM_EXAMPLE, rubrify.Rubric)
         assert rubrify.TRANSFORM_EXAMPLE.behaviors == frozenset({"transform"})
         assert rubrify.TRANSFORM_EXAMPLE.input_renderer is not None
 
@@ -403,11 +380,7 @@ class TestExampleConstants:
 
 @pytest.mark.integration
 def test_completeness_forcing_live() -> None:
-    """Build a completeness-style rubric in Python and force the structure live.
-
-    Requires RUBRIFY_BASE_URL, RUBRIFY_API_KEY, and RUBRIFY_MODEL environment
-    variables. Skipped otherwise. Mirrors ``COMPLETENESS_EXAMPLE``.
-    """
+    """Build a completeness-style rubric in Python and force the structure live."""
     base_url = os.environ.get("RUBRIFY_BASE_URL", "")
     api_key = os.environ.get("RUBRIFY_API_KEY", "")
     model = os.environ.get("RUBRIFY_MODEL", "")
@@ -426,10 +399,10 @@ def test_completeness_forcing_live() -> None:
             return (True, None)
         return (False, "missing full_entire_complete_updated_code_in_a_code_block_here tag")
 
-    rubric = rubrify.ConstraintRubric(
+    rubric = rubrify.Rubric(
         name=COMPLETENESS_EXAMPLE.name,
         instructions=COMPLETENESS_EXAMPLE.instructions,
-        output_format=COMPLETENESS_EXAMPLE.output_format,
+        output_format=COMPLETENESS_EXAMPLE.output_format_str,
         examples=list(COMPLETENESS_EXAMPLE.examples),
         behaviors=COMPLETENESS_EXAMPLE.behaviors,
         validators=[has_response_wrapper, has_code_block_tag],

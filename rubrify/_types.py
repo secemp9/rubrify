@@ -117,7 +117,7 @@ class InputField:
 
 @dataclass(slots=True)
 class Instruction:
-    """Instruction primitive for ConstraintRubric and meta-rubric generators.
+    """Instruction primitive for constraint-style rubrics and meta-rubric generators.
 
     Each instruction corresponds to a property predicate from _properties.py.
     The property_name field enables profile-based instruction composition.
@@ -129,7 +129,7 @@ class Instruction:
 
 @dataclass(slots=True)
 class ICLExample:
-    """In-context learning example for ConstraintRubric."""
+    """In-context learning example for constraint-style rubrics."""
 
     input: str
     output: str

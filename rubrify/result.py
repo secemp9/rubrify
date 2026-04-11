@@ -10,7 +10,7 @@ class EvaluationTrace:
 
     Phase 1 deliverable. Populated only when the caller passes ``observe=True``.
     The trace is attached to the result (or returned alongside it for
-    ``ConstraintRubric.apply``) so the user can inspect exactly what was sent
+    ``Rubric.apply``) so the user can inspect exactly what was sent
     to the model, which parser ran, whether repair fired, and how long the
     round-trip took.
     """
@@ -46,7 +46,7 @@ class EvaluationResult:
 
 @dataclass(frozen=True, slots=True)
 class ConstraintResult:
-    """Outcome of a ``ConstraintRubric.apply_and_validate`` call.
+    """Outcome of a ``Rubric.apply_and_validate`` call.
 
     Phase 2 deliverable. Carries the raw model ``output``, a ``valid`` flag,
     the list of violation messages from failing validators, and optional

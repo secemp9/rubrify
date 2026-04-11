@@ -87,9 +87,9 @@ class TestRubricEvaluateTrace:
         assert result.trace.parser == "raw"
 
 
-class TestConstraintRubricApplyTrace:
+class TestRubricApplyTrace:
     def test_apply_with_observe_returns_tuple(self) -> None:
-        cr = rubrify.ConstraintRubric(name="G", instructions="Generate.", output_format="<foo>")
+        cr = rubrify.Rubric(name="G", instructions="Generate.", output_format="<foo>")
         client = MockClient("raw output")
         result = cr.apply("input text", client=client, model="test-model", observe=True)
         assert isinstance(result, tuple)
@@ -101,14 +101,14 @@ class TestConstraintRubricApplyTrace:
         assert trace.parser == "raw"
 
     def test_apply_default_returns_output_only(self) -> None:
-        cr = rubrify.ConstraintRubric(name="G", instructions="Generate.", output_format="<foo>")
+        cr = rubrify.Rubric(name="G", instructions="Generate.", output_format="<foo>")
         client = MockClient("raw output")
         result: Any = cr.apply("input text", client=client, model="m")
         assert result == "raw output"
         assert not isinstance(result, tuple)
 
     def test_apply_with_observe_and_json_parser(self) -> None:
-        cr = rubrify.ConstraintRubric(name="G", instructions="Generate.", output_format="json")
+        cr = rubrify.Rubric(name="G", instructions="Generate.", output_format="json")
         client = MockClient('{"key": "value"}')
         result = cr.apply(
             "do the thing",

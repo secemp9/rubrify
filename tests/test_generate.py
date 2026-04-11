@@ -157,8 +157,8 @@ class TestMetaEvaluatorStructure:
 
 
 class TestGeneratorStructure:
-    def test_scoring_generator_is_constraint_rubric(self) -> None:
-        assert isinstance(SCORING_GENERATOR, rubrify.ConstraintRubric)
+    def test_scoring_generator_is_rubric(self) -> None:
+        assert isinstance(SCORING_GENERATOR, rubrify.Rubric)
         assert SCORING_GENERATOR.name == "ScoringRubricGenerator"
 
     def test_scoring_generator_has_instructions(self) -> None:
@@ -171,7 +171,7 @@ class TestGeneratorStructure:
         assert "ZinsserJudge" in SCORING_GENERATOR.examples[0].output
 
     def test_detection_generator_has_regex_instructions(self) -> None:
-        assert isinstance(DETECTION_GENERATOR, rubrify.ConstraintRubric)
+        assert isinstance(DETECTION_GENERATOR, rubrify.Rubric)
         assert "regex_library" in DETECTION_GENERATOR.instructions.lower()
         assert "inverted" in DETECTION_GENERATOR.instructions.lower()
 
@@ -180,7 +180,7 @@ class TestGeneratorStructure:
         assert "AntiLLMY" in DETECTION_GENERATOR.examples[0].output
 
     def test_compliance_generator_has_decision_logic_instructions(self) -> None:
-        assert isinstance(COMPLIANCE_GENERATOR, rubrify.ConstraintRubric)
+        assert isinstance(COMPLIANCE_GENERATOR, rubrify.Rubric)
         assert "decision_logic" in COMPLIANCE_GENERATOR.instructions.lower()
         assert "xml" in COMPLIANCE_GENERATOR.instructions.lower()
 
@@ -371,6 +371,6 @@ class TestExports:
         assert hasattr(rubrify, "SCORING_GENERATOR")
         assert hasattr(rubrify, "DETECTION_GENERATOR")
         assert hasattr(rubrify, "COMPLIANCE_GENERATOR")
-        assert isinstance(rubrify.SCORING_GENERATOR, rubrify.ConstraintRubric)
-        assert isinstance(rubrify.DETECTION_GENERATOR, rubrify.ConstraintRubric)
-        assert isinstance(rubrify.COMPLIANCE_GENERATOR, rubrify.ConstraintRubric)
+        assert isinstance(rubrify.SCORING_GENERATOR, rubrify.Rubric)
+        assert isinstance(rubrify.DETECTION_GENERATOR, rubrify.Rubric)
+        assert isinstance(rubrify.COMPLIANCE_GENERATOR, rubrify.Rubric)

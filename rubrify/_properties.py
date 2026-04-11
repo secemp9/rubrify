@@ -104,7 +104,7 @@ def p_examples(r: Rubric) -> int:
 def p_economy(r: Rubric) -> bool:
     """P12: Criteria count in [3,7] range."""
     n = len(r.criteria)
-    return n == 0 or 3 <= n <= 7  # 0 criteria is valid for ConstraintRubric-like
+    return n == 0 or 3 <= n <= 7  # 0 criteria is valid for constraint-style rubrics
 
 
 def p_inverted(r: Rubric) -> bool:

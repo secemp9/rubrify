@@ -187,7 +187,7 @@ class TestRubricEvaluate:
 
 class TestConstraintRubricApply:
     def test_apply_returns_raw_string(self) -> None:
-        cr = rubrify.ConstraintRubric(
+        cr = rubrify.Rubric(
             name="TestGen",
             instructions="Generate a rubric.",
             output_format="<LLM_JUDGE_SPEC>",
@@ -203,7 +203,7 @@ class TestConstraintRubricApply:
         assert client.last_messages[1]["content"] == "Generate a writing rubric."
 
     def test_apply_with_examples(self) -> None:
-        cr = rubrify.ConstraintRubric(
+        cr = rubrify.Rubric(
             name="TestGen",
             instructions="Generate.",
             examples=[ICLExample(input="in", output="out")],
@@ -213,8 +213,8 @@ class TestConstraintRubricApply:
         assert result == "generated output"
 
 
-class TestParallelRubricEvaluate:
-    def test_evaluates_both_sub_rubrics(self) -> None:
+class TestParallelEvaluate:
+    def test_evaluates_both_rubrics(self) -> None:
         r1 = rubrify.Rubric(name="R1", mission="Test 1.")
         r1.add_criterion(Criterion(id="C1", name="X", weight=100, anchors={0: "a", 5: "b"}))
         r1.output_schema = OutputSchema(constraints={"must_be_json": True})
@@ -223,12 +223,10 @@ class TestParallelRubricEvaluate:
         r2.add_criterion(Criterion(id="C1", name="Y", weight=100, anchors={0: "a", 5: "b"}))
         r2.output_schema = OutputSchema(constraints={"must_be_json": True})
 
-        product = r1 & r2
-
         # MockClient returns same response for both
         response = json.dumps({"score": 75, "class": "Good"})
         client = MockClient(response)
-        results = product.evaluate("text", client=client, model="m")
+        results = rubrify.evaluate_parallel([r1, r2], "text", client=client, model="m")
 
         assert len(results) == 2
         assert results[0].score == 75
@@ -236,7 +234,7 @@ class TestParallelRubricEvaluate:
         assert client.call_count == 2
 
 
-class TestConditionalRubricEvaluate:
+class TestConditionalEvaluate:
     def test_dispatches_to_correct_rubric(self) -> None:
         r_sci = rubrify.Rubric(name="Science", mission="Science eval.")
         r_sci.add_criterion(
@@ -255,19 +253,18 @@ class TestConditionalRubricEvaluate:
                 return "science"
             return "business"
 
-        coprod = rubrify.ConditionalRubric(
-            rubrics={"science": r_sci, "business": r_biz},
-            selector=selector,
-        )
-
         response = json.dumps({"score": 90, "class": "Excellent"})
         client = MockClient(response)
 
-        # Should dispatch to science rubric
-        result = coprod.evaluate("The hypothesis was validated.", client=client, model="m")
+        result = rubrify.evaluate_conditional(
+            {"science": r_sci, "business": r_biz},
+            selector,
+            "The hypothesis was validated.",
+            client=client,
+            model="m",
+        )
         assert result.score == 90
         assert client.call_count == 1
-        # Check it used the science rubric's system message
         assert "Science eval." in client.last_messages[0]["content"]
 
     def test_dispatches_to_other_rubric(self) -> None:
@@ -279,14 +276,15 @@ class TestConditionalRubricEvaluate:
         r_b.add_criterion(Criterion(id="C1", name="Y", weight=100, anchors={0: "a", 5: "b"}))
         r_b.output_schema = OutputSchema(constraints={"must_be_json": True})
 
-        coprod = rubrify.ConditionalRubric(
-            rubrics={"a": r_a, "b": r_b},
-            selector=lambda text, **kw: "b",
-        )
-
         response = json.dumps({"score": 60})
         client = MockClient(response)
-        coprod.evaluate("any text", client=client, model="m")
+        rubrify.evaluate_conditional(
+            {"a": r_a, "b": r_b},
+            lambda text, **kw: "b",
+            "any text",
+            client=client,
+            model="m",
+        )
         assert "B eval." in client.last_messages[0]["content"]
 
 

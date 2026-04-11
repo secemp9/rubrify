@@ -12,6 +12,7 @@ from rubrify._types import (
     Criterion,
     DecisionRule,
     Disqualifier,
+    ICLExample,
     InputField,
     MappingExample,
     OutputSchema,
@@ -21,7 +22,7 @@ from rubrify._types import (
 )
 
 if TYPE_CHECKING:
-    from rubrify.rubric import ConstraintRubric, Rubric
+    from rubrify.rubric import Rubric
 
 
 def _text(elem: ET.Element | None) -> str:
@@ -41,11 +42,45 @@ def _bool_attr(elem: ET.Element, attr: str, default: bool = False) -> bool:
 
 
 def rubric_from_xml(xml_string: str) -> Rubric:
-    """Parse an XML string into a Rubric object."""
+    """Parse an XML string into a Rubric object.
+
+    Handles both ``<LLM_JUDGE_SPEC>`` (scoring rubrics) and
+    ``<ConstraintRubric>`` (constraint rubrics) root tags.
+    """
     from rubrify.rubric import Rubric
 
     root = ET.fromstring(xml_string)
 
+    # Handle <ConstraintRubric> root tag
+    if root.tag == "ConstraintRubric":
+        name = root.get("name", "")
+        instructions = _text(root.find("instructions"))
+        output_format = _text(root.find("output_format"))
+
+        examples: list[ICLExample] = []
+        exs_elem = root.find("examples")
+        if exs_elem is not None:
+            for ex_elem in exs_elem.findall("example"):
+                inp_text = _text(ex_elem.find("input"))
+                out_text = _text(ex_elem.find("output"))
+                examples.append(ICLExample(input=inp_text, output=out_text))
+
+        behaviors_elem = root.find("behaviors")
+        if behaviors_elem is not None and behaviors_elem.text:
+            tokens = [tok for tok in behaviors_elem.text.replace(",", " ").split() if tok]
+            behaviors: frozenset[str] = frozenset(tokens)
+        else:
+            behaviors = frozenset()
+
+        return Rubric(
+            name=name,
+            instructions=instructions,
+            output_format=output_format,
+            examples=examples,
+            behaviors=behaviors,
+        )
+
+    # Handle <LLM_JUDGE_SPEC> root tag (and anything else)
     r = Rubric(
         name=root.get("name", ""),
         version=root.get("version", "1.0"),
@@ -332,7 +367,40 @@ def _parse_scoring(elem: ET.Element) -> Scoring:
 
 
 def rubric_to_xml(rubric: Rubric) -> str:
-    """Serialize a Rubric to XML string."""
+    """Serialize a Rubric to XML string.
+
+    If the rubric has instructions/examples (constraint-style), emits a
+    ``<ConstraintRubric>`` root. Otherwise emits ``<LLM_JUDGE_SPEC>``.
+    """
+    # Constraint-style rubric: has instructions but no criteria
+    if rubric.instructions and not rubric.criteria:
+        root = ET.Element("ConstraintRubric")
+        root.set("name", rubric.name)
+
+        if rubric.instructions:
+            inst = ET.SubElement(root, "instructions")
+            inst.text = rubric.instructions
+
+        if rubric.output_format_str:
+            fmt = ET.SubElement(root, "output_format")
+            fmt.text = rubric.output_format_str
+
+        if rubric.examples:
+            exs = ET.SubElement(root, "examples")
+            for icl_ex in rubric.examples:
+                e = ET.SubElement(exs, "example")
+                inp_elem = ET.SubElement(e, "input")
+                inp_elem.text = icl_ex.input
+                out_elem = ET.SubElement(e, "output")
+                out_elem.text = icl_ex.output
+
+        if rubric.behaviors:
+            beh = ET.SubElement(root, "behaviors")
+            beh.text = " ".join(sorted(rubric.behaviors))
+
+        return _pretty_print(root)
+
+    # Scoring-style rubric
     root = ET.Element("LLM_JUDGE_SPEC")
     root.set("version", rubric.version)
     root.set("name", rubric.name)
@@ -564,77 +632,3 @@ def _pretty_print(root: ET.Element) -> str:
         return result
     except Exception:
         return rough
-
-
-def constraint_rubric_to_xml(rubric: ConstraintRubric) -> str:
-    """Serialize a ConstraintRubric to XML system prompt format."""
-    root = ET.Element("ConstraintRubric")
-    root.set("name", rubric.name)
-
-    if rubric.instructions:
-        inst = ET.SubElement(root, "instructions")
-        inst.text = rubric.instructions
-
-    if rubric.output_format:
-        fmt = ET.SubElement(root, "output_format")
-        fmt.text = rubric.output_format
-
-    if rubric.examples:
-        exs = ET.SubElement(root, "examples")
-        for ex in rubric.examples:
-            e = ET.SubElement(exs, "example")
-            inp = ET.SubElement(e, "input")
-            inp.text = ex.input
-            out = ET.SubElement(e, "output")
-            out.text = ex.output
-
-    # Phase 2: metadata-only behaviors tag. Emitted as a space-separated list
-    # of canonical values. Runtime never branches on this tag; it is purely
-    # documentation for the rubric's declared behavior families. See
-    # ``rubrify._behaviors`` for the taxonomy and reference citations.
-    if rubric.behaviors:
-        beh = ET.SubElement(root, "behaviors")
-        beh.text = " ".join(sorted(rubric.behaviors))
-
-    return _pretty_print(root)
-
-
-def constraint_rubric_from_xml(xml_string: str) -> ConstraintRubric:
-    """Parse a ``<ConstraintRubric>`` XML string back into a ConstraintRubric.
-
-    Phase 2 addition. Round-trips the fields emitted by
-    :func:`constraint_rubric_to_xml`: name, instructions, output_format,
-    examples, and the optional ``<behaviors>`` metadata tag. Absent
-    ``<behaviors>`` defaults to an empty frozenset, matching Phase 1
-    behaviour.
-    """
-    from rubrify._types import ICLExample
-    from rubrify.rubric import ConstraintRubric
-
-    root = ET.fromstring(xml_string)
-    name = root.get("name", "")
-    instructions = _text(root.find("instructions"))
-    output_format = _text(root.find("output_format"))
-
-    examples: list[ICLExample] = []
-    exs_elem = root.find("examples")
-    if exs_elem is not None:
-        for ex_elem in exs_elem.findall("example"):
-            inp_text = _text(ex_elem.find("input"))
-            out_text = _text(ex_elem.find("output"))
-            examples.append(ICLExample(input=inp_text, output=out_text))
-
-    behaviors_elem = root.find("behaviors")
-    if behaviors_elem is not None and behaviors_elem.text:
-        tokens = [tok for tok in behaviors_elem.text.replace(",", " ").split() if tok]
-        behaviors: frozenset[str] = frozenset(tokens)
-    else:
-        behaviors = frozenset()
-
-    return ConstraintRubric(
-        name=name,
-        instructions=instructions,
-        output_format=output_format,
-        examples=examples,
-        behaviors=behaviors,
-    )

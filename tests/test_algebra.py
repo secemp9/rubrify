@@ -88,15 +88,10 @@ class TestUnion:
         assert "puffery" in merged.pattern_library.entries
 
 
-class TestProduct:
-    def test_and_produces_product_rubric(self) -> None:
-        a = _rubric_a()
-        b = _rubric_b()
-        product = a & b
-        assert isinstance(product, rubrify.ParallelRubric)
-        assert len(product.rubrics) == 2
-        assert product.rubrics[0].name == "A"
-        assert product.rubrics[1].name == "B"
+class TestParallelEvaluate:
+    def test_evaluate_parallel_is_callable(self) -> None:
+        assert callable(rubrify.evaluate_parallel)
+        assert callable(rubrify.evaluate_conditional)
 
 
 class TestProject:

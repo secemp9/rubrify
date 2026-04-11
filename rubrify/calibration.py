@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from rubrify.result import ConstraintResult, EvaluationResult
-from rubrify.rubric import ConstraintRubric, Rubric
+from rubrify.rubric import Rubric
 
 if TYPE_CHECKING:
     from rubrify._mutations import RubricMutation
@@ -189,7 +189,7 @@ def _check_case(
 
 
 def run_calibration_suite(
-    rubric: Rubric | ConstraintRubric,
+    rubric: Rubric,
     cases: Iterable[CalibrationCase],
     *,
     client: Any,
@@ -199,18 +199,17 @@ def run_calibration_suite(
 ) -> CalibrationReport:
     """Run a calibration suite against a live rubric.
 
-    Dispatches on the concrete rubric type: a :class:`Rubric` is invoked via
-    :meth:`Rubric.evaluate`, a :class:`ConstraintRubric` via
-    :meth:`ConstraintRubric.apply_and_validate`. For each case the runner
-    extracts ``text = payload.get("text", "")`` as the positional argument and
-    forwards the remainder of the payload as keyword arguments so that
-    renderer-based rubrics (e.g. ``ConversationJudgeRenderer``) receive the
-    structured payload they expect. Additional ``**kwargs`` (e.g.
-    ``temperature``) are forwarded to every call.
+    For scoring-style rubrics (with criteria or output_schema), uses
+    :meth:`Rubric.evaluate`. For constraint-style rubrics (with validators
+    but no criteria), uses :meth:`Rubric.apply_and_validate`. For each case
+    the runner extracts ``text = payload.get("text", "")`` as the positional
+    argument and forwards the remainder of the payload as keyword arguments.
     """
     results: list[CalibrationResult] = []
     passed_count = 0
     failed_count = 0
+    # Decide dispatch: use apply_and_validate for constraint-style rubrics
+    use_apply = bool(rubric.validators) and not rubric.criteria
 
     for case in cases:
         text = str(case.payload.get("text", ""))
@@ -218,15 +217,10 @@ def run_calibration_suite(
         merged_kwargs: dict[str, Any] = {**extra_payload, **kwargs}
 
         actual: EvaluationResult | ConstraintResult
-        if isinstance(rubric, Rubric):
-            actual = rubric.evaluate(text, client=client, model=model, **merged_kwargs)
-        elif isinstance(rubric, ConstraintRubric):
+        if use_apply:
             actual = rubric.apply_and_validate(text, client=client, model=model, **merged_kwargs)
         else:
-            raise TypeError(
-                f"run_calibration_suite expects a Rubric or ConstraintRubric, "
-                f"got {type(rubric).__name__}"
-            )
+            actual = rubric.evaluate(text, client=client, model=model, **merged_kwargs)
 
         passed, expected_summary, actual_summary = _check_case(case, actual)
         notes = (case.notes,) if case.notes else ()

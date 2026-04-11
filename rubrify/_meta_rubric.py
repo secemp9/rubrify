@@ -15,7 +15,7 @@ from rubrify._types import (
     OutputSchema,
     Scoring,
 )
-from rubrify.rubric import ConstraintRubric, Rubric
+from rubrify.rubric import Rubric
 
 # --- Instruction Primitives (one per property in the lattice) ---
 
@@ -186,7 +186,7 @@ def compose_from_profile(
 
 # --- Type-Specific Generators ---
 
-SCORING_GENERATOR = ConstraintRubric(
+SCORING_GENERATOR = Rubric(
     name="ScoringRubricGenerator",
     instructions=compose_instructions(
         [
@@ -204,7 +204,7 @@ SCORING_GENERATOR = ConstraintRubric(
     examples=[ICLExample(input="(scoring rubric example)", output=ZINSSER_V3_EXCERPT)],
 )
 
-DETECTION_GENERATOR = ConstraintRubric(
+DETECTION_GENERATOR = Rubric(
     name="DetectionRubricGenerator",
     instructions=compose_instructions(
         [
@@ -224,7 +224,7 @@ DETECTION_GENERATOR = ConstraintRubric(
     examples=[ICLExample(input="(detection rubric example)", output=ANTI_SLOP_EXCERPT)],
 )
 
-COMPLIANCE_GENERATOR = ConstraintRubric(
+COMPLIANCE_GENERATOR = Rubric(
     name="ComplianceRubricGenerator",
     instructions=compose_instructions(
         [

@@ -1,6 +1,5 @@
 __version__ = "0.1.0"
 
-from rubrify._behaviors import CONSTRAINT_BEHAVIORS
 from rubrify._calibration_suites import (
     ANTI_SLOP_DISCRIMINANT_SUITE,
     COMPLETENESS_FORCING_SUITE,
@@ -62,11 +61,8 @@ from rubrify.client import AnthropicClient, ChatClient, Client, OpenAIClient, Op
 from rubrify.generate import (
     generate,
     generate_classifier,
-    generate_constraint,
     generate_detector,
     generate_evaluator,
-    generate_from_examples,
-    generate_transformer,
     refine,
 )
 from rubrify.improve import ImproveReport, default_advice_extractor, improve_text
@@ -86,7 +82,12 @@ from rubrify.repair import (
     extract_xml_candidate,
 )
 from rubrify.result import ConstraintResult, EvaluationResult, EvaluationTrace
-from rubrify.rubric import ConditionalRubric, ConstraintRubric, ParallelRubric, Rubric
+from rubrify.rubric import (
+    CONSTRAINT_BEHAVIORS,
+    Rubric,
+    evaluate_conditional,
+    evaluate_parallel,
+)
 
 
 def load(path: str) -> Rubric:
@@ -114,9 +115,6 @@ __all__ = [
     "generate",
     "refine",
     "Rubric",
-    "ConstraintRubric",
-    "ParallelRubric",
-    "ConditionalRubric",
     "Criterion",
     "Disqualifier",
     "OutputSchema",
@@ -156,24 +154,26 @@ __all__ = [
     "COMPLIANCE_PROFILE",
     "compose_from_profile",
     "META_CRITERION_TO_PROPERTIES",
-    # Phase 1: input renderers
+    # Input renderers
     "InputRenderer",
     "CandidateTextRenderer",
     "ConversationJudgeRenderer",
     "TemplateRenderer",
     "PassthroughRenderer",
     "validate_payload",
-    # Phase 1: repair layer
+    # Repair layer
     "RepairResult",
     "extract_json_candidate",
     "extract_xml_candidate",
     "attempt_schema_repair",
-    # Phase 2: constraint runtime
+    # Constraint runtime
     "CONSTRAINT_BEHAVIORS",
     "COMPLETENESS_EXAMPLE",
     "EXTRACTION_EXAMPLE",
     "TRANSFORM_EXAMPLE",
-    # Phase 3: calibration as unit testing
+    "evaluate_parallel",
+    "evaluate_conditional",
+    # Calibration
     "CalibrationCase",
     "CalibrationResult",
     "CalibrationReport",
@@ -184,7 +184,7 @@ __all__ = [
     "COMPLIANCE_JUDGE_SUITE",
     "ANTI_SLOP_DISCRIMINANT_SUITE",
     "COMPLETENESS_FORCING_SUITE",
-    # Phase 4: provenance and lineage
+    # Provenance and lineage
     "RefinementStep",
     "RubricProvenance",
     "RefinementReport",
@@ -192,11 +192,8 @@ __all__ = [
     "improve_text",
     "ImproveReport",
     "default_advice_extractor",
-    # Phase 5: behavior-oriented generation helpers
+    # Generation helpers
     "generate_evaluator",
     "generate_detector",
     "generate_classifier",
-    "generate_constraint",
-    "generate_transformer",
-    "generate_from_examples",
 ]

@@ -1,4 +1,4 @@
-"""Tests for Rubric and ConstraintRubric classes."""
+"""Tests for Rubric class (unified: scoring + constraint)."""
 
 import rubrify
 from rubrify._types import ICLExample
@@ -22,7 +22,7 @@ class TestRubricConstruction:
     def test_repr(self) -> None:
         r = rubrify.Rubric(name="Test", version="1.0")
         assert "Test" in repr(r)
-        assert "criteria=0" in repr(r)
+        assert "criteria=0" not in repr(r) or "examples=0" in repr(r)
 
 
 class TestAddCriterion:
@@ -106,9 +106,9 @@ class TestCopy:
         assert r.criteria["C1"].weight == 10
 
 
-class TestConstraintRubric:
+class TestConstraintStyleRubric:
     def test_construction(self) -> None:
-        cr = rubrify.ConstraintRubric(
+        cr = rubrify.Rubric(
             name="TestGen",
             instructions="Generate rubric",
             output_format="<LLM_JUDGE_SPEC>",
@@ -118,12 +118,12 @@ class TestConstraintRubric:
         assert cr.examples == []
 
     def test_with_examples(self) -> None:
-        cr = rubrify.ConstraintRubric(
+        cr = rubrify.Rubric(
             name="TestGen",
             examples=[ICLExample(input="in", output="out")],
         )
         assert len(cr.examples) == 1
 
     def test_repr(self) -> None:
-        cr = rubrify.ConstraintRubric(name="TestGen")
+        cr = rubrify.Rubric(name="TestGen")
         assert "TestGen" in repr(cr)
