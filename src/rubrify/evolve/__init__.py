@@ -18,6 +18,7 @@ from rubrify.evolve.evolver import (
     evolve_rubric,
     evolve_rubric_v3,
 )
+from rubrify.evolve.progress import EvolutionProgress
 from rubrify.evolve.proposal_gate import ProposalQualityGate
 from rubrify.evolve.types import (
     AnnotatedExample,
@@ -29,6 +30,7 @@ __all__ = [
     "CoEvolutionComponents",
     "CoEvolutionConfig",
     "CoEvolutionResult",
+    "EvolutionProgress",
     "ProposalQualityGate",
     "RubricEvolutionConfig",
     "RubricEvolutionResult",

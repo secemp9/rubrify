@@ -8,13 +8,13 @@ human-annotated dataset.
 from __future__ import annotations
 
 import random
+import sys
 from dataclasses import dataclass
 from typing import Any
 
 from gepa.core.engine import GEPAEngine
 from gepa.core.result import GEPAResult
 from gepa.logging.experiment_tracker import create_experiment_tracker
-from gepa.logging.logger import StdOutLogger
 from gepa.proposer.reflective_mutation.reflective_mutation import ReflectiveMutationProposer
 from gepa.strategies.batch_sampler import EpochShuffledBatchSampler
 from gepa.strategies.candidate_selector import ParetoCandidateSelector
@@ -281,7 +281,8 @@ def evolve_rubric(
         )
 
     # Set up GEPA components
-    logger = StdOutLogger()
+    from rubrify.evolve.progress import EvolutionProgress
+    logger = EvolutionProgress(total_budget=config.max_metric_calls)
     experiment_tracker = create_experiment_tracker()
     rng_gepa = random.Random(config.seed)
 
@@ -333,6 +334,8 @@ def evolve_rubric(
 
     with experiment_tracker:
         state = engine.run()
+
+    sys.stderr.write(logger.summary() + "\n")
 
     gepa_result = GEPAResult.from_state(state, run_dir=config.run_dir, seed=config.seed)
 
@@ -625,7 +628,8 @@ def evolve_rubric_v3(
     )
 
     # 8. Set up GEPA components
-    logger = StdOutLogger()
+    from rubrify.evolve.progress import EvolutionProgress
+    logger = EvolutionProgress(total_budget=config.max_metric_calls)
     experiment_tracker = create_experiment_tracker()
     rng_gepa = random.Random(config.seed)
 
@@ -679,6 +683,8 @@ def evolve_rubric_v3(
     # 10. Run the engine
     with experiment_tracker:
         state = engine.run()
+
+    sys.stderr.write(logger.summary() + "\n")
 
     gepa_result = GEPAResult.from_state(state, run_dir=config.run_dir, seed=config.seed)
 
