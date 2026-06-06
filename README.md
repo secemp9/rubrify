@@ -22,7 +22,7 @@ Or with uv:
 uv add rubrify
 ```
 
-Core dependencies: `harn-ai`, `harn-agent`, `pydantic>=2.10`, `defusedxml>=0.7`.
+Core dependencies: `harn-ai`, `harn-agent`, `pydantic>=2.10`.
 
 For the rubric evolution system (GEPA integration):
 

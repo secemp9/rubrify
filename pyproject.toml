@@ -8,7 +8,6 @@ dependencies = [
     "harn-ai",
     "harn-agent",
     "pydantic>=2.10",
-    "defusedxml>=0.7",
 ]
 
 [project.optional-dependencies]
