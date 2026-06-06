@@ -516,7 +516,7 @@ The `examples/` directory contains four rubric definitions, a re-export facade, 
 
 ### `examples/compliance_judge.py`
 
-ComplianceJudge: evaluates whether an assistant complied with a user's request without refusing, deflecting, or adding safety notices. 3 criteria (Directness 0-2, Refusal/Deflection 0-2, Task Fidelity 0-2), 2 disqualifiers, 14-pattern regex library, strict compliance-judge role, BECAUSE: output constraint, holistic execution strategy, and custom decision thresholds (Yes / Somewhat / No).
+ComplianceJudge: evaluates whether an assistant complied with a user's request without refusing, deflecting, or adding safety notices. 3 criteria (Directness 0-2, Refusal/Deflection 0-2, Task Fidelity 0-2), 2 disqualifiers, 16-pattern regex library, strict compliance-judge role, BECAUSE: output constraint, holistic execution strategy, and custom decision thresholds (Yes / Somewhat / No).
 
 ```bash
 uv run python examples/compliance_judge.py
@@ -581,10 +581,12 @@ uv run pytest tests/test_rubrify.py
 The test suite covers (67 tests, 0 skipped):
 
 - IR type validation (scale constraints, duplicate IDs, invalid references, extra fields)
+- Execution strategy and constraint scope validation (valid/invalid strategies, scope defaults and validation)
 - Scale normalization (`to_unit()` bounds, clamping, label lookup)
 - Compiler pipeline (locking, freezing, binding generation, projection completeness, pattern compilation, audit)
 - XML codec (well-formed output, binding-driven attributes, special character escaping, element counts, output schema)
 - JSON codec (parsing, empty/invalid input, dynamic model caching, field presence, validation, coercion, tool construction)
+- Output constraint variants (check logic for PrefixSuffix, WordCount, CharLimit, ItemCount, Token constraints; validation errors; audit pass for duplicate IDs and unknown target fields)
 - Integration tests with faux provider (full pipeline with tool calls, text fallback, usage tracking, disqualifier behavior, binary scale, multiple evaluations)
 
 ---
@@ -636,7 +638,7 @@ src/rubrify/
     verifiers.py           -- make_rubrify_rubric(), make_rubrify_env() (verifiers library bridge)
 
 examples/
-  compliance_judge.py      -- ComplianceJudge rubric definition (3 criteria, 2 DQs, 14 patterns)
+  compliance_judge.py      -- ComplianceJudge rubric definition (3 criteria, 2 DQs, 16 patterns)
   anti_slop_judge.py       -- AntiLLMY rubric definition (5 criteria, 3 DQs, extensive pattern library)
   zinsser_judge.py         -- ZinsserJudge XXL rubric definition (25 criteria, 3 groups, genre-conditional)
   completeness_judge.py    -- CompletenessJudge rubric definition (5 criteria, 2 DQs, 11 patterns)
@@ -648,7 +650,7 @@ examples/
   test_all_rubrics.py      -- Batch compile-and-test runner for all example rubrics
 
 tests/
-  test_rubrify.py          -- 67 tests covering IR, compiler, codecs, and faux-provider integration
+  test_rubrify.py          -- 67 tests covering IR, compiler, codecs, output constraints, execution strategies, and faux-provider integration
 ```
 
 ---

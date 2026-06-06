@@ -16,7 +16,7 @@ rubrify is a rubric compiler and judge engine for LLM evaluation. You define str
 - **Pydantic v2 (>= 2.10)** with `SchemaModel` from `harn_ai.types`. SchemaModel sets `extra="forbid"` by default, meaning any unknown field on any model raises `ValidationError`.
 - **harn_ai** for LLM access (multi-provider: OpenAI, Anthropic, DeepSeek, Google, local proxies). Provides `Model`, `Context`, `SimpleStreamOptions`, `Tool`, `UserMessage`, `complete_simple()`, `parse_json_with_repair()`, and `get_env_api_key()`.
 - **harn_agent** for agent primitives (dependency, but not heavily used in rubrify's own code).
-- **defusedxml >= 0.7** for safe XML parsing. Construction uses `xml.etree.ElementTree`; parsing uses `defusedxml.ElementTree`.
+- **xml.etree.ElementTree** for XML construction and serialization. No XML parsing of untrusted input occurs in this codebase (the XML codec only constructs and serializes documents, never parses them).
 - **gepa >= 0.1.0** (optional, for `rubrify[evolve]`). Provides `GEPAAdapter`, `GEPAEngine`, `ReflectiveMutationProposer`, `ParetoCandidateSelector`, `RoundRobinReflectionComponentSelector`, `EpochShuffledBatchSampler`, `MaxMetricCallsStopper`, `AcceptanceCriterion`, `EvaluationBatch`, `GEPAResult`.
 - **asyncio throughout the engine**. `execute_criterion()`, `run_judge_loop()`, and `Judge.evaluate()` are all async. The evolution module bridges async-to-sync via `evolve/async_bridge.py`'s `run_async()` utility, which uses `asyncio.run()` when no event loop is running, or dispatches to a `ThreadPoolExecutor` when already inside an async context (e.g. Jupyter, async test harness).
 - **Build system**: Hatchling (`hatchling.build`), with `src/rubrify` layout.
@@ -234,12 +234,14 @@ pytest tests/test_rubrify.py        # or: uv run pytest tests/test_rubrify.py
 
 The test file (`tests/test_rubrify.py`) contains 67 tests (0 skipped) organized into classes:
 
-1. **TestIRValidation** -- Validates that Pydantic rejects invalid rubric structures: bad scale params, negative weights, duplicate IDs, invalid group/disqualifier refs, extra fields.
-2. **TestScaleNormalization** -- Verifies `to_unit()` for all scale types: bounds, clamping, label lookup, unknown label error.
-3. **TestCompiler** -- Compilation pipeline: locked bundles, frozen config, binding generation, projection completeness, pattern compilation, audit.
-4. **TestXmlCodec** -- XML output: well-formedness, attributes, mission text, special char escaping, binding-driven attributes, criterion count, output schema.
-5. **TestJsonCodec** -- JSON parsing: valid/empty/whitespace/invalid input, model caching, field presence, validation, coercion, tool construction.
-6. **TestIntegration** -- Full pipeline with faux provider: tool-call path, text fallback, usage tracking, disqualifier behavior, binary scale, multiple evaluations.
+1. **TestIRValidation** (10 tests) -- Validates that Pydantic rejects invalid rubric structures: bad scale params, negative weights, duplicate IDs, invalid group/disqualifier refs, extra fields.
+2. **TestExecutionStrategy** (5 tests) -- Validates execution_strategy on SurfacePolicy (valid/invalid strategies) and scope on OutputConstraints (defaults, valid/invalid scopes).
+3. **TestScaleNormalization** (8 tests) -- Verifies `to_unit()` for all scale types: bounds, clamping, label lookup, unknown label error.
+4. **TestCompiler** (9 tests) -- Compilation pipeline: locked bundles, frozen config, binding generation, projection completeness, pattern compilation, audit.
+5. **TestXmlCodec** (7 tests) -- XML output: well-formedness, attributes, mission text, special char escaping, binding-driven attributes, criterion count, output schema.
+6. **TestJsonCodec** (10 tests) -- JSON parsing: valid/empty/whitespace/invalid input, model caching, field presence, validation, coercion, tool construction.
+7. **TestOutputConstraints** (12 tests) -- OutputConstraint variants: check() logic for PrefixSuffix, WordCount, CharLimit, ItemCount, Token constraints; validation errors (at-least-one for PrefixSuffix, nonpositive count); audit_output_constraints for duplicate IDs and unknown target fields.
+8. **TestIntegration** (6 tests) -- Full pipeline with faux provider: tool-call path, text fallback, usage tracking, disqualifier behavior, binary scale, multiple evaluations.
 
 ### Faux Provider
 
@@ -266,12 +268,10 @@ Integration tests are async methods on the test class. pytest-asyncio is expecte
 
 1. Define a new class in `ir/types.py` inheriting from `SchemaModel` with `kind: Literal["your_kind"] = "your_kind"`, a `domain()` method, and a `to_unit(value) -> float` method.
 2. Add it to the `ScaleValue` union type and the `Scale` Annotated type.
-3. Update `codecs/json_codec.py` `_scale_to_field_type()` to return the appropriate Pydantic field type for the new scale.
-4. Update `codecs/json_codec.py` `_build_judgment_model_cached()` type_map to include the new kind.
-5. Update `codecs/json_codec.py` `generate_judgment_template()` to provide a default value for the new kind.
-6. Update `codecs/xml_codec.py` `_build_criterion_element()` if the new scale has anchors or special rendering.
-7. Update `evolve/meta_metric.py` `_get_scale_range()` and `_to_numeric()` to handle the new scale.
-8. Add tests in `tests/test_rubrify.py` for validation, `to_unit()`, and compilation.
+3. Update `codecs/json_codec.py` `_build_judgment_model_cached()` `type_map` dict to include the new kind and its corresponding Pydantic field type tuple.
+4. Update `codecs/xml_codec.py` `_build_criterion_element()` if the new scale has anchors or special rendering.
+5. Update `evolve/meta_metric.py` `_get_scale_range()` and `_to_numeric()` to handle the new scale.
+6. Add tests in `tests/test_rubrify.py` for validation, `to_unit()`, and compilation.
 
 ### Adding a New Criterion Field
 
@@ -382,7 +382,7 @@ All engine functions (`execute_criterion`, `run_judge_loop`, `Judge.evaluate`) a
 
 ### Evidence Verification Is Strict
 
-Evidence quotes are verified against the response text using exact containment first, then normalized containment (strip quotes, collapse whitespace, lowercase). There is no fuzzy or subsequence matching. Unverified evidence gets `source="unverified"` and a warning.
+Evidence quotes are verified against the response text using exact containment first, then normalized containment (strip quotes, collapse whitespace, lowercase). There is no fuzzy or subsequence matching. Unverified evidence produces a warning string (e.g. "Evidence quote not found in response: '...'") but does NOT mutate the `CriterionJudgment` -- the `EvidenceQuote.source` field is not changed.
 
 ### Disqualifier Pattern Matching
 
@@ -418,6 +418,5 @@ When `execute_group()` handles a multi-criterion call unit, the LLM returns one 
 | `harn-ai` | Multi-provider LLM access. Provides `Model`, `Context`, `Tool`, `complete_simple()`, `parse_json_with_repair()`, `get_env_api_key()`, `SchemaModel` (Pydantic base with `extra="forbid"`). All LLM calls go through this. |
 | `harn-agent` | Agent primitives. Listed as a dependency but not heavily used directly in rubrify's code. |
 | `pydantic >= 2.10` | Data validation and serialization. All IR types, judgment types, and dynamic models use Pydantic v2. `create_model()` is used for dynamic judgment output models. |
-| `defusedxml >= 0.7` | Safe XML parsing (prevents XXE and billion-laughs attacks). Imported as `defusedxml.ElementTree` for any XML parsing. Standard `xml.etree.ElementTree` is used only for XML construction (which is always safe). |
 | `gepa >= 0.1.0` (optional) | GEPA (Generalized Evolutionary Prompt Adaptation). Provides the optimization loop, adapter protocol, proposers, candidate selectors, batch samplers, stopping criteria, acceptance criteria, and result types. Only needed for `rubrify[evolve]`. |
 | `python-dotenv >= 1.0` (optional) | Loads environment variables from `.env` files. Used in example scripts (e.g. `red_team_judge.py`) for API key discovery. Install with `pip install rubrify[dev]`. |
