@@ -44,24 +44,22 @@ class SurfacePolicy(SchemaModel):
     enforce_key_order: bool = True
     criterion_focus: Literal["full", "focused"] = "full"
     decision_thresholds: list[tuple[float, str]] | None = None
+    execution_strategy: Literal["holistic", "grouped", "per_criterion"] = "per_criterion"
+    """How the judge dispatches criteria to LLM calls during evaluation.
 
-
-class GenreModule(SchemaModel):
-    """Genre-conditional module: activates additional criteria when genre matches.
-
-    From ZinsserJudge: G_TRV for travel, G_BUS for business, G_HUM for humor.
-    Each genre module has its own criteria that only fire when the input
-    genre matches.
+    - "holistic": one LLM call evaluates all active criteria simultaneously.
+      Produces one shared rationale and evidence pool. Matches the original
+      rubric architecture where a single output_schema contains all criterion
+      scores in one JSON blob.
+    - "grouped": one LLM call per CriterionGroup. Criteria within a group are
+      evaluated together with shared rationale/evidence. Ungrouped criteria
+      fall back to per_criterion behavior.
+    - "per_criterion": one LLM call per criterion (current behavior). Maximum
+      isolation between criteria, maximum cost.
     """
-    id: str
-    genre: list[str]
-    criteria_ids: list[str]
-    weight_multiplier: float = 1.0
-    description: str = ""
 
 
 __all__ = [
-    "GenreModule",
     "RoleSpec",
     "SurfacePolicy",
 ]

@@ -12,6 +12,7 @@ from functools import lru_cache
 from typing import Any
 
 from pydantic import BaseModel, ValidationError, create_model, Field as PydanticField
+from pydantic_core import PydanticUndefined
 
 from harn_ai.types import Tool
 from harn_ai.utils.json_parse import parse_json_with_repair
@@ -50,20 +51,6 @@ def parse_judgment_json(raw: str) -> dict[str, Any]:
 
 # ── Dynamic model construction (cached per criterion specs) ──────
 
-def _scale_to_field_type(scale: Any) -> tuple:
-    """Derive Pydantic field type from scale for dynamic model creation."""
-    from rubrify.ir.types import BinaryScale, NumericScale, OrdinalScale, NominalScale
-    if isinstance(scale, BinaryScale):
-        return (bool | int | float, ...)
-    if isinstance(scale, NumericScale):
-        return (int | float, ...)
-    if isinstance(scale, OrdinalScale):
-        return (int | float | str, ...)
-    if isinstance(scale, NominalScale):
-        return (str, ...)
-    return (int | float | str, ...)
-
-
 @lru_cache(maxsize=32)
 def _build_judgment_model_cached(criterion_specs: tuple) -> type:
     """Build and cache a dynamic Pydantic model keyed by criterion specs."""
@@ -92,26 +79,35 @@ def _build_judgment_model_cached(criterion_specs: tuple) -> type:
     return JudgmentOutput
 
 
-def build_judgment_model(bundle: "RubricBundle") -> type:
+def build_judgment_model(bundle: "RubricBundle", criteria: list | None = None) -> type:
     """Build a dynamic Pydantic model for this rubric's expected output.
 
     Cached per criterion specs — calling this 10 times for a 10-criterion
     rubric creates the model once.
+
+    If *criteria* is provided, build the model using only those criteria
+    (for group/holistic calls where a subset is evaluated in one call).
+    If None, uses all criteria from bundle.rubric.criteria (backwards
+    compatible).
     """
-    specs = tuple((c.id, c.scale.kind) for c in bundle.rubric.criteria)
+    source = criteria if criteria is not None else bundle.rubric.criteria
+    specs = tuple((c.id, c.scale.kind) for c in source)
     return _build_judgment_model_cached(specs)
 
 
 # ── Tool construction for structured output ──────────────────────
 
-def build_judgment_tool(bundle: "RubricBundle") -> Tool:
+def build_judgment_tool(bundle: "RubricBundle", criteria: list | None = None) -> Tool:
     """Build a harn Tool that forces structured judgment output.
 
     When passed to Context(tools=[...]), providers like OpenAI and Anthropic
     force the LLM to produce valid JSON matching the schema via tool-calling.
     This is more reliable than text-prompting for JSON.
+
+    If *criteria* is provided, build the tool for only those criteria
+    (subset evaluation in group/holistic execution strategies).
     """
-    Model = build_judgment_model(bundle)
+    Model = build_judgment_model(bundle, criteria=criteria)
     return Tool(
         name="submit_judgment",
         description=(
@@ -130,23 +126,75 @@ def generate_judgment_schema(bundle: "RubricBundle") -> dict:
     return Model.model_json_schema()
 
 
-def generate_judgment_template(bundle: "RubricBundle") -> str:
+def _zero_value_for_annotation(annotation: Any) -> Any:
+    """Return a sensible zero/empty value for a type annotation.
+
+    Handles union types (e.g. ``int | float``) by picking the first concrete
+    member, and falls back to ``None`` for anything unrecognised.
+    """
+    import types as _types
+    import typing
+
+    # Unwrap PEP 604 union (int | float | str) — a types.UnionType instance
+    if isinstance(annotation, _types.UnionType):
+        return _zero_value_for_annotation(annotation.__args__[0])
+
+    # Also handle typing.Union[int, float, str]
+    origin = getattr(annotation, "__origin__", None)
+    if origin is typing.Union:
+        return _zero_value_for_annotation(annotation.__args__[0])
+
+    # Concrete scalar types
+    if annotation is bool:
+        return False
+    if annotation is int:
+        return 0
+    if annotation is float:
+        return 0.0
+    if annotation is str:
+        return ""
+    if annotation is list or (origin is list):
+        return []
+    if annotation is dict or (origin is dict):
+        return {}
+
+    # Pydantic sub-model: recurse into its fields
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return _model_to_template(annotation)
+
+    return None
+
+
+def _model_to_template(model: type[BaseModel]) -> dict[str, Any]:
+    """Build a zero-valued template dict from a Pydantic model's fields.
+
+    For each field the logic is:
+    1. Use ``field.default`` if one is set (and is not PydanticUndefined).
+    2. Call ``field.default_factory()`` if one is set.
+    3. Otherwise derive a zero value from the field's type annotation.
+    """
+    template: dict[str, Any] = {}
+    for name, field_info in model.model_fields.items():
+        if field_info.default is not PydanticUndefined:
+            template[name] = field_info.default
+        elif field_info.default_factory is not None:
+            template[name] = field_info.default_factory()
+        else:
+            template[name] = _zero_value_for_annotation(field_info.annotation)
+    return template
+
+
+def generate_judgment_template(bundle: "RubricBundle", criteria: list | None = None) -> str:
     """Generate a JSON template (zero-valued instance) from the model.
 
     Single source of truth: the template is derived from the same dynamic
     model used for validation and tool construction.
+
+    If *criteria* is provided, generate a template for only those criteria
+    (subset evaluation in group/holistic execution strategies).
     """
-    Model = build_judgment_model(bundle)
-    # Build default values per criterion
-    defaults: dict[str, Any] = {"score": 0, "rationale": "", "evidence": [], "violations": []}
-    criterion_defaults = {}
-    for c in bundle.rubric.criteria:
-        if c.scale.kind == "binary":
-            criterion_defaults[c.id] = False
-        else:
-            criterion_defaults[c.id] = 0
-    defaults["criterion_scores"] = criterion_defaults
-    return json.dumps(defaults, separators=(",", ":"))
+    Model = build_judgment_model(bundle, criteria=criteria)
+    return json.dumps(_model_to_template(Model), separators=(",", ":"))
 
 
 # ── Validation (returns model instance, not dict) ────────────────

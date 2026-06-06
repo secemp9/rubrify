@@ -1,11 +1,15 @@
 """Meta-metric: rubric quality measurement against human annotations.
 
-Computes three orthogonal quality dimensions:
-  - agreement: how well the rubric's judgments match human annotations
+Computes two batch-level quality dimensions:
   - consistency: how stable scores are across repeated runs
   - discrimination: how well the rubric spreads scores across quality levels
 
-These feed into GEPA's multi-objective Pareto front via objective_scores.
+Agreement is computed per-example inline in the adapter (see adapter.py)
+so that GEPA receives per-example scores. These feed into GEPA's
+multi-objective Pareto front via objective_scores.
+
+Also exports helper functions (_get_scale_range, _to_numeric) used by
+the adapter's per-example agreement computation.
 """
 
 from __future__ import annotations
@@ -21,62 +25,6 @@ from rubrify.ir.types import (
     NumericScale,
     OrdinalScale,
 )
-
-
-def compute_agreement(
-    judgments: list[Judgment],
-    examples: list["AnnotatedExample"],
-    criteria: list[Criterion],
-) -> tuple[float, dict[str, float]]:
-    """Compute agreement between rubric judgments and human annotations.
-
-    Uses a normalized absolute-error metric scaled to [0, 1] where
-    1.0 = perfect agreement. This is simpler and more robust than
-    Cohen's kappa for ordinal scales with few annotators.
-
-    For each criterion, agreement = 1 - (mean_absolute_error / scale_range).
-    Overall agreement = weighted mean across criteria.
-    """
-    from rubrify.evolve.types import AnnotatedExample  # noqa: F811
-
-    per_criterion: dict[str, float] = {}
-    total_weight = 0.0
-    weighted_sum = 0.0
-
-    for criterion in criteria:
-        errors: list[float] = []
-        scale = criterion.scale
-        scale_range = _get_scale_range(scale)
-
-        for judgment, example in zip(judgments, examples):
-            if criterion.id not in example.human_scores:
-                continue
-            human_val = example.human_scores[criterion.id]
-            cj = next(
-                (cj for cj in judgment.criterion_judgments if cj.criterion_id == criterion.id),
-                None,
-            )
-            if cj is None or cj.value is None:
-                errors.append(1.0)  # Maximum disagreement if criterion not scored
-                continue
-
-            human_numeric = _to_numeric(human_val, scale)
-            judge_numeric = _to_numeric(cj.value, scale)
-            if scale_range > 0:
-                errors.append(abs(human_numeric - judge_numeric) / scale_range)
-            else:
-                errors.append(0.0 if human_numeric == judge_numeric else 1.0)
-
-        if errors:
-            agreement = 1.0 - statistics.mean(errors)
-        else:
-            agreement = 0.0
-        per_criterion[criterion.id] = agreement
-        weighted_sum += agreement * criterion.weight
-        total_weight += criterion.weight
-
-    overall = weighted_sum / total_weight if total_weight > 0 else 0.0
-    return overall, per_criterion
 
 
 def compute_consistency(
@@ -198,7 +146,6 @@ def _to_numeric(value: Any, scale: Any) -> float:
 
 
 __all__ = [
-    "compute_agreement",
     "compute_consistency",
     "compute_discrimination",
 ]

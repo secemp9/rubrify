@@ -22,7 +22,6 @@ from rubrify.evolve.progress import EvolutionProgress
 from rubrify.evolve.proposal_gate import ProposalQualityGate
 from rubrify.evolve.types import (
     AnnotatedExample,
-    RubricQualityScore,
 )
 
 __all__ = [
@@ -34,7 +33,6 @@ __all__ = [
     "ProposalQualityGate",
     "RubricEvolutionConfig",
     "RubricEvolutionResult",
-    "RubricQualityScore",
     "evolve_rubric",
     "evolve_rubric_v3",
 ]

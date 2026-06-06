@@ -151,7 +151,16 @@ Scale: TypeAlias = Annotated[ScaleValue, Field(discriminator="kind")]
 # ── Evidence specification ─────────────────────────────────────────
 
 class EvidenceSpec(SchemaModel):
-    """What evidence the judge must provide for a criterion."""
+    """What evidence the judge must provide for a criterion.
+
+    The ``required``, ``exact_quote``, ``min_items``, and ``max_items``
+    fields are **prompt-only**: they are rendered into the XML surface
+    format so the LLM judge can see and act on them, but they are not
+    enforced post-hoc by the engine.  Runtime evidence verification
+    (see ``_verify_evidence`` in the judge loop) checks that quoted text
+    exists in the response; it does not yet enforce item counts or the
+    exact-quote requirement programmatically.
+    """
     source: Literal["response", "context", "rubric", "any"] = "response"
     required: bool = True
     exact_quote: bool = False
@@ -162,22 +171,15 @@ class EvidenceSpec(SchemaModel):
 # ── Criterion ──────────────────────────────────────────────────────
 
 class Criterion(SchemaModel):
-    """The atomic evaluation unit. One criterion = one independently decidable check.
-
-    The 'prompt_key' field is intentionally separate from 'title' because
-    schema-key wording steers model behavior (per JSONSchemaBench research).
-    """
+    """The atomic evaluation unit. One criterion = one independently decidable check."""
     id: str
     title: str
     description: str
-    prompt_key: str | None = None
     scale: Scale
     weight: float = Field(default=1.0, ge=0)
     evidence: EvidenceSpec = EvidenceSpec()
-    tags: list[str] = []
     genre: list[str] | None = None
     mechanical_rules: list[str] = []
-    disqualifier: bool = False
 
 
 class CriterionGroup(SchemaModel):
@@ -211,12 +213,12 @@ class Definition(SchemaModel):
 
 
 class AdviceRule(SchemaModel):
-    """Maps a pattern trigger to a concrete fix imperative.
+    """A concrete fix imperative for the evaluator.
 
-    When patterns fire, the advice tells the evaluator what to recommend.
-    E.g., trigger="puffery_words" → fix="Replace hype with concrete facts."
+    Advice rules are rendered into the XML surface format so the LLM
+    judge can see them. They provide actionable coaching guidance.
+    E.g., fix="Replace hype with concrete facts; remove evaluatives."
     """
-    trigger_patterns: list[str]  # pattern IDs that trigger this advice
     fix: str  # the concrete imperative
 
 

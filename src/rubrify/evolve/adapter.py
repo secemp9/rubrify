@@ -12,8 +12,6 @@ evaluates each candidate rubric by:
 
 from __future__ import annotations
 
-import asyncio
-import concurrent.futures
 import json
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -26,10 +24,11 @@ from rubrify.compiler.compiler import CompilationResult, compile_rubric
 from rubrify.engine.judge import Judge, JudgeConfig
 from rubrify.engine.judgment import Judgment
 from rubrify.ir.bundle import RubricBundle
-from rubrify.ir.constraints import RitualConstraint
+from rubrify.ir.constraints import OutputConstraint
 from rubrify.ir.roles import RoleSpec, SurfacePolicy
 from rubrify.ir.types import Rubric
 
+from rubrify.evolve.async_bridge import run_async
 from rubrify.evolve.candidate import candidate_to_rubric, rubric_to_candidate
 from rubrify.evolve.meta_metric import (
     _get_scale_range,
@@ -55,7 +54,7 @@ class RubricEvolverAdapter(
         *,
         base_role: RoleSpec | None = None,
         base_policy: SurfacePolicy | None = None,
-        base_rituals: list[RitualConstraint] | None = None,
+        base_output_constraints: list[OutputConstraint] | None = None,
         judge_api_key: str | None = None,
         judge_temperature: float = 0.0,
         judge_max_tokens: int = 2048,
@@ -67,7 +66,7 @@ class RubricEvolverAdapter(
         self._base_rubric = base_rubric
         self._base_role = base_role
         self._base_policy = base_policy or SurfacePolicy()
-        self._base_rituals = base_rituals or []
+        self._base_output_constraints = base_output_constraints or []
         self._judge_model = judge_model
         self._judge_api_key = judge_api_key
         self._judge_temperature = judge_temperature
@@ -96,7 +95,7 @@ class RubricEvolverAdapter(
         policy = self._base_policy
         if role is not None:
             policy = policy.model_copy(update={"role": role})
-        result = compile_rubric(rubric, policy=policy, rituals=self._base_rituals)
+        result = compile_rubric(rubric, policy=policy, output_constraints=self._base_output_constraints)
         return rubric, role, result
 
     def _run_judgments(
@@ -119,15 +118,7 @@ class RubricEvolverAdapter(
                 judgments.append(judgment)
             return judgments
 
-        # Bridge to sync: use existing event loop or create one
-        try:
-            asyncio.get_running_loop()
-            # Already in an async context -- run in a thread to avoid nesting
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                future = pool.submit(asyncio.run, _evaluate_all())
-                return future.result()
-        except RuntimeError:
-            return asyncio.run(_evaluate_all())
+        return run_async(_evaluate_all())
 
     def evaluate(
         self,
@@ -465,8 +456,8 @@ class RubricEvolverAdapter(
             }
             if judgment.pattern_hits:
                 gen_out_goal["pattern_hits"] = judgment.pattern_hits
-            if judgment.ritual_warnings:
-                gen_out_goal["ritual_warnings"] = judgment.ritual_warnings
+            if judgment.constraint_warnings:
+                gen_out_goal["constraint_warnings"] = judgment.constraint_warnings
             record["Generated Outputs"] = gen_out_goal
 
             disagreements = [cid for cid, err in errors.items() if err > 0.3]
@@ -474,9 +465,9 @@ class RubricEvolverAdapter(
                 f" Pattern hits: {json.dumps(judgment.pattern_hits)}."
                 if judgment.pattern_hits else ""
             )
-            ritual_str = (
-                f" Ritual warnings: {judgment.ritual_warnings}."
-                if judgment.ritual_warnings else ""
+            constraint_str = (
+                f" Constraint warnings: {judgment.constraint_warnings}."
+                if judgment.constraint_warnings else ""
             )
             record["Feedback"] = (
                 f"The rubric's goal guides the judge's overall interpretation. "
@@ -484,7 +475,7 @@ class RubricEvolverAdapter(
                 f"Judge decision: {judgment.decision}. "
                 f"Per-criterion disagreements: {disagreements}. "
                 f"Per-criterion scores: {json.dumps(per_crit_summary)}."
-                f"{pattern_str}{ritual_str} "
+                f"{pattern_str}{constraint_str} "
                 f"Consider whether the goal statement adequately conveys "
                 f"the evaluation intent and scope."
             )
@@ -501,7 +492,7 @@ class RubricEvolverAdapter(
             gen_out_instr: dict[str, Any] = {
                 "decision": judgment.decision or "",
                 "violations": judgment.violations,
-                "ritual_warnings": judgment.ritual_warnings,
+                "constraint_warnings": judgment.constraint_warnings,
                 "per_criterion_summary": per_crit_summary_instr,
             }
             if judgment.pattern_hits:
@@ -515,7 +506,7 @@ class RubricEvolverAdapter(
             record["Feedback"] = (
                 f"Instructions guide the judge's evaluation procedure. "
                 f"Violations detected: {judgment.violations}. "
-                f"Ritual warnings: {judgment.ritual_warnings}.{pattern_str} "
+                f"Constraint warnings: {judgment.constraint_warnings}.{pattern_str} "
                 f"Compilation issues: {trajectory.compilation_issues}. "
                 f"Per-criterion results: {json.dumps(per_crit_summary_instr)}. "
                 f"Consider whether instructions need to be more explicit about "

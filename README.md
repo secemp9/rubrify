@@ -114,13 +114,11 @@ The union type `Scale` is: `Annotated[BinaryScale | OrdinalScale | NominalScale 
 
 - `id` -- unique identifier
 - `title`, `description` -- human-readable
-- `prompt_key` -- optional override for the JSON schema key (defaults to `id` after compilation); wording steers model behavior
 - `scale` -- one of the four scale types above
 - `weight` -- contribution to the aggregate score (default 1.0)
-- `evidence` -- `EvidenceSpec` controlling what evidence the judge must cite
-- `tags`, `genre` -- for filtering and genre-conditional activation
+- `evidence` -- `EvidenceSpec` controlling what evidence the judge must cite (note: `required`, `exact_quote`, `min_items`, and `max_items` on EvidenceSpec are prompt-only -- they are rendered into the XML surface so the LLM can see them, but are not enforced post-hoc by the engine)
+- `genre` -- for genre-conditional activation
 - `mechanical_rules` -- free-text rules rendered in XML
-- `disqualifier` -- if `True`, criterion acts as an auto-fail gate
 
 **CriterionGroup** provides hierarchical aggregation over criteria. Supported aggregation strategies: `weighted_sum`, `weighted_mean`, `min`, `max`, `all`, `any`.
 
@@ -128,7 +126,7 @@ The union type `Scale` is: `Annotated[BinaryScale | OrdinalScale | NominalScale 
 
 **Rubric** is the mutable, pre-compilation object. It contains criteria, groups, disqualifiers, instructions, patterns (`PatternEntry` for regex matching), definitions (`Definition`), advice rules (`AdviceRule`), and calibration examples (`CalibrationExample`). Model validators enforce unique criterion IDs and valid group/disqualifier references at construction time.
 
-**RubricBundle** is the immutable, locked, executable form produced by the compiler. It contains the frozen rubric, compiled regex patterns, constraint bindings, authority blocks, surface policy, genre modules, and ritual constraints. The bundle is frozen via Pydantic's `frozen=True` config.
+**RubricBundle** is the immutable, locked, executable form produced by the compiler. It contains the frozen rubric, compiled regex patterns, constraint bindings, authority blocks, surface policy, and output constraints. The bundle is frozen via Pydantic's `frozen=True` config.
 
 ### Roles and Constraints
 
@@ -152,26 +150,46 @@ The union type `Scale` is: `Annotated[BinaryScale | OrdinalScale | NominalScale 
 
 **AuthorityBlock** marks a prompt section as instruction vs. data, enforcing instruction/data separation.
 
-**RitualConstraint** formalizes "useful weirdness" constraints with typed enforcement parameters (no string parsing). Supports `prefix`, `suffix`, `token`, `word_count` (with `word_count_mode`: `exactly`, `max`, `min`), and `hard`/`soft` enforcement.
+**OutputConstraint** is a discriminated union of typed constraint variants, each with a concrete `check(value) -> str | None` method for enforcement. The union is `Annotated[PrefixSuffixConstraint | WordCountConstraint | CharLimitConstraint | ItemCountConstraint | TokenConstraint, Field(discriminator="kind")]`. Each variant carries `id`, `description`, `target_field`, `enforcement` (`"hard"` or `"soft"`), and `scope`. Hard constraints trigger disqualification; soft constraints produce warnings. Pydantic discriminates on the `kind` field (`"prefix_suffix"`, `"word_count"`, `"char_limit"`, `"item_count"`, `"token"`).
 
-**GenreModule** activates additional criteria when the input genre matches.
+The `scope` field controls when a constraint is checked relative to execution strategy:
+
+| Scope | Behavior | Default |
+|---|---|---|
+| `"call"` | Checked once per LLM call. For `per_criterion`, this is per criterion. For `grouped`/`holistic`, once per group/holistic call. Shared outputs (e.g. rationale) are deduplicated. | Yes |
+| `"criterion"` | Checked per criterion individually, regardless of execution strategy. | No |
+| `"judgment"` | Checked once on the final aggregated result (all criterion outputs concatenated). | No |
+
+```python
+from rubrify.ir.constraints import WordCountConstraint
+
+constraint = WordCountConstraint(
+    id="rationale_length",
+    description="Rationale must be at least 10 words",
+    target_field="rationale",
+    enforcement="soft",
+    scope="criterion",      # check every criterion's rationale, even in grouped mode
+    count=10,
+    mode="min",
+)
+```
 
 ---
 
 ## Compiler Pipeline
 
-`compile_rubric(rubric, *, policy=None, rituals=None) -> CompilationResult`
+`compile_rubric(rubric, *, policy=None, output_constraints=None) -> CompilationResult`
 
 This is a synchronous, pure function (no LLM calls). It runs these passes:
 
-1. **Normalize** -- sets `prompt_key` defaults (to criterion `id` if not specified).
-2. **Bind** -- generates a `ConstraintBinding` for each criterion, with XML and JSON `SurfaceProjection` objects. This is the triple-layer alignment: criterion ID maps to XML attributes and JSON output path.
-3. **AuthorityBlocks** -- creates standard authority blocks for `rubric_spec`, `response_under_test`, `judge_instructions`, and `context_document`.
-4. **Lock** -- produces an immutable `RubricBundle` via `lock_bundle()`. Compiles all `PatternEntry` and `Disqualifier` regex patterns (fails loudly on invalid regex).
-5. **Audit** -- three audit passes check:
+1. **Bind** -- generates a `ConstraintBinding` for each criterion, with XML and JSON `SurfaceProjection` objects. This is the triple-layer alignment: criterion ID maps to XML attributes and JSON output path.
+2. **AuthorityBlocks** -- creates standard authority blocks for `rubric_spec`, `response_under_test`, `judge_instructions`, and `context_document`.
+3. **Lock** -- produces an immutable `RubricBundle` via `lock_bundle()`. Compiles all `PatternEntry` and `Disqualifier` regex patterns (fails loudly on invalid regex).
+4. **Audit** -- audit passes check:
    - `audit_coverage` -- every criterion has a binding
    - `audit_projection_completeness` -- every binding has projections matching the policy's codecs
    - `audit_scale_consistency` -- ordinal scales have anchors, numeric scales have `max > min`
+   - `audit_output_constraints` -- recognized fields, duplicate IDs, hard-enforcement safety
 
 `CompilationResult` has a `.ok` property (True if no issues) and `.issues` list.
 
@@ -220,11 +238,39 @@ judgment = await judge.evaluate(
 4. Check disqualifiers (pattern-based and criterion-linked).
 5. Run mechanical pattern checks (`PatternEntry` patterns against the response).
 6. Verify evidence quotes exist in the response text (exact containment, then normalized containment).
-7. Verify ritual constraints against LLM output.
+7. Verify output constraints against LLM output.
 8. Aggregate scores (weighted mean, or grouped aggregation if groups exist).
 9. Compute decision label from thresholds (defaults: >=90 "Publish-ready", >=75 "Strong draft", >=60 "Workable draft", >=40 "Needs major revision", <40 "Fundamentally unclear"). Disqualifier violations produce "Rejected".
 
-Execution supports `parallel=True` for concurrent criterion evaluation via `asyncio.gather`.
+Execution supports `parallel=True` for concurrent call-unit evaluation via `asyncio.gather`.
+
+### Execution Strategies
+
+The `execution_strategy` field on `SurfacePolicy` controls how criteria are dispatched to LLM calls:
+
+| Strategy | Call granularity | Use when |
+|---|---|---|
+| `"per_criterion"` | One LLM call per criterion (default) | Need maximum isolation, deep per-criterion analysis |
+| `"grouped"` | One LLM call per `CriterionGroup` | Rubric has logical groups, want intra-group coherence with composability |
+| `"holistic"` | One LLM call for ALL active criteria | Few criteria, need holistic coherence, cost-sensitive |
+
+Set via `SurfacePolicy`:
+
+```python
+from rubrify.ir.roles import SurfacePolicy
+
+policy = SurfacePolicy(execution_strategy="grouped")
+bundle = compile_rubric(rubric, policy=policy).bundle
+```
+
+**Implementation details:**
+
+- The judge loop partitions active criteria into "call units" based on strategy. Each call unit is one LLM invocation.
+- `"grouped"` uses `CriterionGroup.children` to determine call boundaries. Ungrouped criteria fall back to individual calls.
+- `"holistic"` places all active criteria into a single call unit.
+- Multi-criterion call units use `execute_group()`, which renders a group-specific XML prompt via `render_group_xml()` and extracts per-criterion scores from a single `criterion_scores` response dict.
+- Single-criterion call units use the original `execute_criterion()` path.
+- `parallel=True` parallelizes across call units (not within them).
 
 ### CriterionExecutor
 
@@ -239,7 +285,7 @@ Both strategies extract criterion scores via typed Pydantic model attribute acce
 
 - `CriterionJudgment` -- per-criterion result: `criterion_id`, `value` (raw score), `unit_score` (normalized 0-1), `evidence` (list of `EvidenceQuote`), `rationale`, `confidence`, `warnings`.
 - `AggregatedScore` -- `raw_score`, `normalized_score` (0-100), `method`, `group_scores`.
-- `Judgment` -- the complete output: `criterion_judgments`, `aggregation`, `decision`, `violations`, `ritual_warnings`, `pattern_hits`, `usage` (`JudgeUsage`), `timestamp`.
+- `Judgment` -- the complete output: `criterion_judgments`, `aggregation`, `decision`, `violations`, `constraint_warnings`, `pattern_hits`, `usage` (`JudgeUsage`), `timestamp`.
 - `JudgeUsage` -- tracks `input_tokens`, `output_tokens`, `total_tokens`, `api_calls`.
 
 ---
@@ -252,7 +298,7 @@ Both strategies extract criterion scores via typed Pydantic model attribute acce
 
 Key design: bindings drive the criterion rendering. Each criterion's XML attributes come from its binding's `SurfaceProjection(codec="xml")`, not from raw criterion fields. This closes the triple-layer alignment loop.
 
-The XML document includes: mission, role, rubric (criteria with anchors and evidence specs), disqualifiers, definitions, calibration examples, advice rules, output schema (with JSON template derived from the dynamic Pydantic model), scoring formula, pattern library, validation (ritual constraints), and instructions.
+The XML document includes: mission, role, rubric (criteria with anchors and evidence specs), disqualifiers, definitions, calibration examples, advice rules, output schema (with JSON template derived from the dynamic Pydantic model), scoring formula, pattern library, validation (output constraints), and instructions.
 
 `render_criterion_xml(criterion, bundle) -> str` renders a focused document for a single criterion, used when `criterion_focus == "focused"`.
 
@@ -387,7 +433,7 @@ The `examples/` directory contains:
 
 ### `examples/red_team_judge.py`
 
-A full working example porting a ComplianceJudge rubric to rubrify. Defines a 3-criterion rubric (Directness, Refusal/Deflection, Task Fidelity) with disqualifiers, pattern library, role spec, ritual constraints, and custom decision thresholds. Runs 4 calibration cases.
+A full working example porting a ComplianceJudge rubric to rubrify. Defines a 3-criterion rubric (Directness, Refusal/Deflection, Task Fidelity) with disqualifiers, pattern library, role spec, output constraints, and custom decision thresholds. Runs 4 calibration cases.
 
 ```bash
 uv run python examples/red_team_judge.py
@@ -398,7 +444,7 @@ uv run python examples/red_team_judge.py
 A library of three complete rubrics as rubrify IR objects:
 
 - **ComplianceJudge** -- 3 criteria, 2 disqualifiers, 14 patterns, custom Yes/Somewhat/No thresholds
-- **ZinsserJudge XXL** -- 12 core criteria (C1-C12), 10 genre modules, 3 attitude lenses, 5 disqualifiers, 11 patterns, 3 groups (core/genre/attitude), BECAUSE: + 35-word rituals
+- **ZinsserJudge XXL** -- 12 core criteria (C1-C12), 10 genre modules, 3 attitude lenses, 5 disqualifiers, 11 patterns, 3 groups (core/genre/attitude), BECAUSE: + 35-word output constraints
 - **AntiLLMY** -- 5 criteria for detecting LLM-generated text ("slop"), 3 disqualifiers, extensive pattern library, inverted risk scoring
 
 Run to compile all rubrics and print summaries:
@@ -423,11 +469,11 @@ Or with uv:
 uv run pytest tests/test_rubrify.py
 ```
 
-The test suite covers (52 tests):
+The test suite covers (67 tests, 0 skipped):
 
 - IR type validation (scale constraints, duplicate IDs, invalid references, extra fields)
 - Scale normalization (`to_unit()` bounds, clamping, label lookup)
-- Compiler pipeline (locking, freezing, normalization, binding generation, projection completeness, pattern compilation, audit)
+- Compiler pipeline (locking, freezing, binding generation, projection completeness, pattern compilation, audit)
 - XML codec (well-formed output, binding-driven attributes, special character escaping, element counts, output schema)
 - JSON codec (parsing, empty/invalid input, dynamic model caching, field presence, validation, coercion, tool construction)
 - Integration tests with faux provider (full pipeline with tool calls, text fallback, usage tracking, disqualifier behavior, binary scale, multiple evaluations)
@@ -442,13 +488,13 @@ src/rubrify/
 
   ir/                      -- Intermediate representation (typed core)
     types.py               -- Scale types, Criterion, CriterionGroup, Disqualifier, Rubric
-    roles.py               -- RoleSpec, SurfacePolicy, GenreModule
-    constraints.py         -- ConstraintBinding, SurfaceProjection, AuthorityBlock, RitualConstraint
+    roles.py               -- RoleSpec, SurfacePolicy
+    constraints.py         -- ConstraintBinding, SurfaceProjection, AuthorityBlock, OutputConstraint (discriminated union)
     bundle.py              -- RubricBundle (immutable), lock_bundle()
 
   compiler/                -- Rubric -> RubricBundle transformation
     compiler.py            -- compile_rubric(), CompilationResult
-    passes.py              -- normalize(), bind(), audit_coverage(), audit_projection_completeness(), audit_scale_consistency()
+    passes.py              -- bind(), audit_coverage(), audit_projection_completeness(), audit_scale_consistency(), audit_output_constraints()
 
   codecs/                  -- Surface format rendering and parsing
     xml_codec.py           -- render_rubric_xml(), render_criterion_xml()
@@ -456,17 +502,18 @@ src/rubrify/
 
   engine/                  -- Judge execution
     judgment.py            -- CriterionJudgment, AggregatedScore, Judgment, JudgeUsage
-    executor.py            -- execute_criterion() (single LLM call per criterion)
-    judge_loop.py          -- run_judge_loop() (criterion-by-criterion iteration, aggregation, decision)
+    executor.py            -- execute_criterion() (single criterion), execute_group() (multi-criterion in one LLM call)
+    judge_loop.py          -- run_judge_loop() (strategy-aware dispatch: per_criterion/grouped/holistic)
     judge.py               -- Judge, JudgeConfig (stateful public API)
 
   evolve/                  -- Rubric evolution via GEPA (optional)
-    types.py               -- AnnotatedExample, JudgmentTrajectory, RubricQualityScore
+    types.py               -- AnnotatedExample, JudgmentTrajectory
     candidate.py           -- rubric_to_candidate(), candidate_to_rubric()
     lm_bridge.py           -- make_harn_lm() (wraps harn_ai Model as GEPA's LanguageModel protocol)
     adapter.py             -- RubricEvolverAdapter (GEPAAdapter implementation)
     evolver.py             -- evolve_rubric(), evolve_rubric_v3(), config/result dataclasses
-    meta_metric.py         -- compute_agreement(), compute_consistency(), compute_discrimination()
+    async_bridge.py        -- run_async() (async-to-sync bridge for nested event loops)
+    meta_metric.py         -- compute_consistency(), compute_discrimination(), _get_scale_range(), _to_numeric()
     acceptance.py          -- RubricAwareAcceptance (multi-dimensional acceptance criterion)
     proposal_gate.py       -- ProposalQualityGate, make_proposal_quality_rubric()
     gated_proposer.py      -- GatedProposalFn
@@ -481,7 +528,7 @@ examples/
   rubric_library.py        -- Three complete rubrics (ComplianceJudge, ZinsserJudge, AntiLLMY)
 
 tests/
-  test_rubrify.py          -- 52 tests covering IR, compiler, codecs, and faux-provider integration
+  test_rubrify.py          -- 67 tests covering IR, compiler, codecs, and faux-provider integration
 ```
 
 ---

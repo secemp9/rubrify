@@ -15,15 +15,20 @@ and tag IDs that cross-reference with output fields.
 
 from __future__ import annotations
 
-import json
-
 # ET for construction (Element, SubElement, indent, tostring) — always safe.
-# SafeET for parsing (fromstring, parse) — defends against XXE/billion-laughs.
 import xml.etree.ElementTree as ET
-import defusedxml.ElementTree as SafeET  # noqa: F401 — imported for safe parsing
 
 from rubrify.ir.bundle import RubricBundle
-from rubrify.ir.constraints import ConstraintBinding, SurfaceProjection
+from rubrify.ir.constraints import (
+    CharLimitConstraint,
+    ConstraintBinding,
+    ItemCountConstraint,
+    OutputConstraint,
+    PrefixSuffixConstraint,
+    SurfaceProjection,
+    TokenConstraint,
+    WordCountConstraint,
+)
 from rubrify.ir.types import Criterion, OrdinalScale, NumericScale
 
 
@@ -101,7 +106,6 @@ def render_rubric_xml(bundle: RubricBundle) -> str:
         advice_el = ET.SubElement(root, "advice_rules")
         for rule in rubric.advice_rules:
             rule_el = ET.SubElement(advice_el, "rule")
-            rule_el.set("when", "|".join(rule.trigger_patterns))
             rule_el.text = rule.fix
 
     # Output schema
@@ -130,13 +134,11 @@ def render_rubric_xml(bundle: RubricBundle) -> str:
             p_el.set("flags", p.flags)
             p_el.text = p.pattern
 
-    # Ritual constraints as validation block (triple validation)
-    if bundle.rituals:
+    # Output constraints as validation block (triple validation)
+    if bundle.output_constraints:
         validation_el = ET.SubElement(root, "validation")
-        for ritual in bundle.rituals:
-            must_el = ET.SubElement(validation_el, "must")
-            must_el.set("id", ritual.id)
-            must_el.text = ritual.description
+        for constraint in bundle.output_constraints:
+            _build_constraint_element(validation_el, constraint)
 
     # Instructions
     if rubric.instructions:
@@ -221,15 +223,201 @@ def render_criterion_xml(
     _add_text_child(constraints_el, "must_be_json", "true")
     _add_text_child(constraints_el, "no_prose_outside_json", "true")
 
-    if bundle.rituals:
+    if bundle.output_constraints:
         validation_el = ET.SubElement(root, "validation")
-        for ritual in bundle.rituals:
-            must_el = ET.SubElement(validation_el, "must")
-            must_el.set("id", ritual.id)
-            must_el.text = ritual.description
+        for constraint in bundle.output_constraints:
+            _build_constraint_element(validation_el, constraint)
 
     ET.indent(root, space="  ")
     return ET.tostring(root, encoding="unicode")
+
+
+def render_group_xml(criteria: list[Criterion], bundle: RubricBundle) -> str:
+    """Render an XML document for a GROUP of criteria (a subset of the rubric).
+
+    Used by execution strategies that batch criteria into groups rather than
+    evaluating them one-at-a-time or all-at-once. Produces a document similar
+    to render_rubric_xml but filtered to the specified criteria subset.
+
+    Includes:
+      - Root element with rubric name and version
+      - Mission/goal text
+      - The criteria subset only (not all criteria)
+      - Definitions (shared across all criteria)
+      - Disqualifiers (only those relevant to the subset)
+      - Pattern library (full — patterns can trigger across any criterion)
+      - Output schema with json_template for the criteria subset
+      - Calibration examples (shared)
+      - Output constraints (from bundle.output_constraints)
+      - Scoring formula (for the subset)
+    """
+    rubric = bundle.rubric
+    policy = bundle.surface_policy
+    bindings_by_id = {b.criterion_id: b for b in bundle.bindings}
+    subset_ids = {c.id for c in criteria}
+
+    root = ET.Element("LLM_JUDGE_SPEC")
+    root.set("version", rubric.meta.version)
+    root.set("name", rubric.meta.name)
+    root.set("group", ",".join(c.id for c in criteria))
+
+    # Mission
+    mission = ET.SubElement(root, "mission")
+    mission.text = rubric.goal
+
+    # Role (instruction authority block)
+    if policy.role:
+        role_el = ET.SubElement(root, "role")
+        role_el.set("authority", policy.role.authority)
+        persona_el = ET.SubElement(role_el, "persona")
+        persona_el.text = policy.role.persona
+        for obligation in policy.role.obligations:
+            ob_el = ET.SubElement(role_el, "obligation")
+            ob_el.text = obligation
+        for constraint in policy.role.constraints:
+            co_el = ET.SubElement(role_el, "constraint")
+            co_el.text = constraint
+
+    # Rubric block — only the criteria subset
+    rubric_el = ET.SubElement(root, "rubric")
+    for criterion in criteria:
+        binding = bindings_by_id.get(criterion.id)
+        _build_criterion_element(rubric_el, criterion, binding)
+
+    # Disqualifiers — only those relevant to the subset
+    # A DQ is relevant if it has no criterion_ids (global) or if any of its
+    # criterion_ids intersect with the subset.
+    if rubric.disqualifiers:
+        relevant_dqs = [
+            dq for dq in rubric.disqualifiers
+            if not dq.criterion_ids or subset_ids & set(dq.criterion_ids)
+        ]
+        if relevant_dqs:
+            dqs_el = ET.SubElement(rubric_el, "disqualifiers")
+            for dq in relevant_dqs:
+                dq_el = ET.SubElement(dqs_el, "dq")
+                dq_el.set("id", dq.id)
+                dq_el.text = dq.description
+
+    # Definitions (shared across all criteria)
+    if rubric.definitions:
+        defs_el = ET.SubElement(root, "definitions")
+        for defn in rubric.definitions:
+            def_el = ET.SubElement(defs_el, "def")
+            def_el.set("id", defn.id)
+            def_el.set("term", defn.term)
+            def_el.text = defn.description
+
+    # Calibration examples (shared few-shot)
+    if rubric.calibration_examples:
+        examples_el = ET.SubElement(root, "mapping_examples")
+        for ex in rubric.calibration_examples:
+            ex_el = ET.SubElement(examples_el, "example")
+            ex_el.set("id", ex.id)
+            input_el = ET.SubElement(ex_el, "input")
+            input_el.text = ex.input_summary
+            verdict_el = ET.SubElement(ex_el, "verdict")
+            verdict_el.text = ex.expected_verdict
+            if ex.explanation:
+                why_el = ET.SubElement(ex_el, "explanation")
+                why_el.text = ex.explanation
+
+    # Output schema — json_template for the criteria subset only
+    schema_el = ET.SubElement(root, "output_schema")
+    tmpl_el = ET.SubElement(schema_el, "json_template")
+    tmpl_el.text = _render_json_template_for_group(criteria, bundle)
+    constraints_el = ET.SubElement(schema_el, "constraints")
+    _add_text_child(constraints_el, "must_be_json", "true")
+    _add_text_child(constraints_el, "no_prose_outside_json", "true")
+    if policy.enforce_key_order:
+        keys = "score,rationale,evidence,violations,criterion_scores"
+        _add_text_child(constraints_el, "key_order", keys)
+
+    # Scoring formula (for the subset)
+    scoring_el = ET.SubElement(root, "scoring")
+    formula_parts = [f"{c.id}*{c.weight}" for c in criteria]
+    formula_el = ET.SubElement(scoring_el, "formula")
+    formula_el.text = f"score = ({' + '.join(formula_parts)}) / total_weight; if any DQ => score=0"
+
+    # Pattern library (full — patterns can trigger across any criterion)
+    if rubric.patterns:
+        patterns_el = ET.SubElement(root, "pattern_library")
+        for p in rubric.patterns:
+            p_el = ET.SubElement(patterns_el, "pattern")
+            p_el.set("id", p.id)
+            p_el.set("flags", p.flags)
+            p_el.text = p.pattern
+
+    # Output constraints (triple validation)
+    if bundle.output_constraints:
+        validation_el = ET.SubElement(root, "validation")
+        for constraint in bundle.output_constraints:
+            _build_constraint_element(validation_el, constraint)
+
+    ET.indent(root, space="  ")
+    return ET.tostring(root, encoding="unicode")
+
+
+def _render_json_template_for_group(criteria: list[Criterion], bundle: RubricBundle) -> str:
+    """Render the expected JSON output template for a criteria subset."""
+    from rubrify.codecs.json_codec import generate_judgment_template
+    return generate_judgment_template(bundle, criteria=criteria)
+
+
+def _build_constraint_element(
+    parent: ET.Element,
+    constraint: OutputConstraint,
+) -> ET.Element:
+    """Build a typed <must> element with kind-specific attributes.
+
+    Renders both the human-readable description (as text content) and the
+    machine-verifiable parameters (as XML attributes) so the LLM sees
+    the exact structural requirements alongside the natural language.
+
+    Each constraint variant gets its own structural attributes:
+      - prefix_suffix: prefix, suffix
+      - word_count:    count, mode
+      - char_limit:    limit, mode
+      - item_count:    count, mode, delimiter
+      - token:         token, must_contain
+    Common attributes on all: id, kind, target_field, enforcement.
+    """
+    must_el = ET.SubElement(parent, "must")
+
+    # Common attributes shared by all constraint variants
+    must_el.set("id", constraint.id)
+    must_el.set("kind", constraint.kind)
+    must_el.set("target_field", constraint.target_field)
+    must_el.set("enforcement", constraint.enforcement)
+
+    # Kind-specific structural attributes
+    if isinstance(constraint, PrefixSuffixConstraint):
+        if constraint.prefix is not None:
+            must_el.set("prefix", constraint.prefix)
+        if constraint.suffix is not None:
+            must_el.set("suffix", constraint.suffix)
+
+    elif isinstance(constraint, WordCountConstraint):
+        must_el.set("count", str(constraint.count))
+        must_el.set("mode", constraint.mode)
+
+    elif isinstance(constraint, CharLimitConstraint):
+        must_el.set("limit", str(constraint.limit))
+        must_el.set("mode", constraint.mode)
+
+    elif isinstance(constraint, ItemCountConstraint):
+        must_el.set("count", str(constraint.count))
+        must_el.set("mode", constraint.mode)
+        must_el.set("delimiter", constraint.delimiter)
+
+    elif isinstance(constraint, TokenConstraint):
+        must_el.set("token", constraint.token)
+        must_el.set("must_contain", str(constraint.must_contain).lower())
+
+    # Description as text content for natural language understanding
+    must_el.text = constraint.description
+
+    return must_el
 
 
 def _build_criterion_element(
@@ -256,8 +444,6 @@ def _build_criterion_element(
 
     if criterion.genre:
         crit_el.set("genre", ",".join(criterion.genre))
-    if criterion.disqualifier:
-        crit_el.set("disqualifier", "true")
 
     # Anchors — proper <anchor value="N"> elements, not dynamic tag names
     scale = criterion.scale
@@ -312,5 +498,6 @@ def _add_text_child(parent: ET.Element, tag: str, text: str) -> ET.Element:
 
 __all__ = [
     "render_criterion_xml",
+    "render_group_xml",
     "render_rubric_xml",
 ]

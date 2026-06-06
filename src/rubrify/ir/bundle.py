@@ -12,8 +12,8 @@ import re
 from pydantic import ConfigDict, Field
 
 from rubrify.ir.types import Rubric, SchemaModel
-from rubrify.ir.constraints import AuthorityBlock, ConstraintBinding, RitualConstraint
-from rubrify.ir.roles import GenreModule, RoleSpec, SurfacePolicy
+from rubrify.ir.constraints import AuthorityBlock, ConstraintBinding, OutputConstraint
+from rubrify.ir.roles import RoleSpec, SurfacePolicy
 
 
 class RubricBundle(SchemaModel):
@@ -28,12 +28,21 @@ class RubricBundle(SchemaModel):
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True, frozen=True)
 
     rubric: Rubric
-    compiled_patterns: dict[str, re.Pattern[str]] = Field(default_factory=dict, exclude=True)
+    compiled_patterns: dict[str, re.Pattern[str]] = Field(
+        default_factory=dict,
+        exclude=True,
+        description=(
+            "Runtime cache of compiled regex patterns, keyed by pattern/disqualifier ID. "
+            "This is NOT part of the bundle's identity or serialized form (exclude=True). "
+            "Populated once by lock_bundle() at construction time and never modified after. "
+            "The dict is technically mutable despite the frozen model, but treated as "
+            "write-once: any post-construction mutation is a bug."
+        ),
+    )
     bindings: list[ConstraintBinding] = []
     authority_blocks: list[AuthorityBlock] = []
     surface_policy: SurfacePolicy = SurfacePolicy()
-    genre_modules: list[GenreModule] = []
-    rituals: list[RitualConstraint] = []
+    output_constraints: list[OutputConstraint] = []
     locked: bool = False
 
 
@@ -41,14 +50,12 @@ def lock_bundle(
     rubric: Rubric,
     bindings: list[ConstraintBinding],
     policy: SurfacePolicy,
-    rituals: list[RitualConstraint] | None = None,
+    output_constraints: list[OutputConstraint] | None = None,
     authority_blocks: list[AuthorityBlock] | None = None,
-    genre_modules: list[GenreModule] | None = None,
 ) -> RubricBundle:
     """Compile a Rubric into an immutable RubricBundle."""
-    rituals = rituals or []
+    output_constraints = output_constraints or []
     authority_blocks = authority_blocks or []
-    genre_modules = genre_modules or []
 
     # Compile PatternEntry patterns — fail loudly on invalid regex
     compiled: dict[str, re.Pattern[str]] = {}
@@ -70,8 +77,7 @@ def lock_bundle(
         bindings=bindings,
         authority_blocks=authority_blocks,
         surface_policy=policy,
-        genre_modules=genre_modules,
-        rituals=rituals,
+        output_constraints=output_constraints,
         locked=True,
         compiled_patterns=compiled,
     )

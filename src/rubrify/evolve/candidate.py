@@ -67,7 +67,7 @@ def rubric_to_candidate(rubric: Rubric, role: RoleSpec | None = None) -> dict[st
     # Advice rules
     if rubric.advice_rules:
         candidate["rubric.advice_rules"] = json.dumps([
-            {"trigger_patterns": ar.trigger_patterns, "fix": ar.fix}
+            {"fix": ar.fix}
             for ar in rubric.advice_rules
         ], indent=2)
 
@@ -162,7 +162,7 @@ def candidate_to_rubric(
     advice_rules = base_rubric.advice_rules
     if "rubric.advice_rules" in candidate:
         ar_data = json.loads(candidate["rubric.advice_rules"])
-        advice_rules = [AdviceRule(trigger_patterns=ar["trigger_patterns"], fix=ar["fix"]) for ar in ar_data]
+        advice_rules = [AdviceRule(fix=ar["fix"]) for ar in ar_data]
 
     # Calibration examples
     calibration_examples = base_rubric.calibration_examples

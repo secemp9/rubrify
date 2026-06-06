@@ -2,14 +2,15 @@
 
 AnnotatedExample: a single (response, human_annotation) pair.
 JudgmentTrajectory: per-example trace for GEPA's reflective dataset.
-RubricQualityScore: multi-dimensional rubric quality assessment.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from rubrify.engine.judgment import Judgment
+if TYPE_CHECKING:
+    from rubrify.engine.judgment import Judgment
 
 
 @dataclass(slots=True)
@@ -38,26 +39,7 @@ class JudgmentTrajectory:
     compilation_issues: list[str]
 
 
-@dataclass(slots=True)
-class RubricQualityScore:
-    """Multi-dimensional rubric quality assessment."""
-    # Primary: agreement with human annotations (normalized, 0-1)
-    agreement: float
-    # Consistency: same response -> same score across N runs (1 - CV, 0-1)
-    consistency: float
-    # Discrimination: spread of scores across quality levels (normalized entropy, 0-1)
-    discrimination: float
-    # Composite: weighted combination for GEPA's scalar score
-    composite: float
-    # Per-criterion diagnostics
-    per_criterion_agreement: dict[str, float] = field(default_factory=dict)
-    per_criterion_consistency: dict[str, float] = field(default_factory=dict)
-    # The raw judgments for trajectory capture
-    judgments: list[Judgment] = field(default_factory=list)
-
-
 __all__ = [
     "AnnotatedExample",
     "JudgmentTrajectory",
-    "RubricQualityScore",
 ]

@@ -23,7 +23,7 @@ from gepa.utils import MaxMetricCallsStopper
 
 from harn_ai.types import Model as HarnifyModel
 
-from rubrify.ir.constraints import RitualConstraint
+from rubrify.ir.constraints import OutputConstraint
 from rubrify.ir.roles import RoleSpec, SurfacePolicy
 from rubrify.ir.types import Rubric
 
@@ -31,6 +31,8 @@ from rubrify.evolve.adapter import RubricEvolverAdapter
 from rubrify.evolve.candidate import candidate_to_rubric, rubric_to_candidate
 from rubrify.evolve.lm_bridge import make_harn_lm
 from rubrify.evolve.types import AnnotatedExample
+
+_UNSET = object()  # Sentinel to distinguish "not passed" from explicit values
 
 
 # ── Reflection prompt template ─────────────────────────────────────
@@ -125,15 +127,16 @@ def evolve_rubric(
     *,
     role: RoleSpec | None = None,
     policy: SurfacePolicy | None = None,
-    rituals: list[RitualConstraint] | None = None,
+    output_constraints: list[OutputConstraint] | None = None,
     judge_api_key: str | None = None,
     reflection_api_key: str | None = None,
     config: RubricEvolutionConfig | None = None,
-    # Legacy kwargs for convenience -- overridden by config if provided
-    train_split: float = 0.7,
-    max_metric_calls: int = 200,
-    consistency_runs: int = 1,
-    run_dir: str | None = None,
+    # Legacy kwargs for convenience -- used only when config is None.
+    # Raises ValueError if both config and any of these are provided.
+    train_split: float | object = _UNSET,
+    max_metric_calls: int | object = _UNSET,
+    consistency_runs: int | object = _UNSET,
+    run_dir: str | None | object = _UNSET,
 ) -> RubricEvolutionResult:
     """Evolve a rubric using GEPA's reflective prompt evolution.
 
@@ -200,7 +203,7 @@ def evolve_rubric(
             rubric improvements). Can be the same model or a stronger one.
         role: Optional RoleSpec for the judge persona.
         policy: Optional SurfacePolicy for rendering.
-        rituals: Optional ritual constraints.
+        output_constraints: Optional output constraints.
         judge_api_key: API key for judge model. Auto-discovered from env if None.
         reflection_api_key: API key for reflection model.
         config: Full configuration. If None, uses individual kwargs.
@@ -209,12 +212,26 @@ def evolve_rubric(
         RubricEvolutionResult with the best evolved rubric, score, and history.
     """
     # Resolve config
+    _legacy_kwargs = {
+        "train_split": train_split,
+        "max_metric_calls": max_metric_calls,
+        "consistency_runs": consistency_runs,
+        "run_dir": run_dir,
+    }
+    _explicitly_passed = [k for k, v in _legacy_kwargs.items() if v is not _UNSET]
+
+    if config is not None and _explicitly_passed:
+        raise ValueError(
+            f"Cannot provide both 'config' and individual keyword arguments "
+            f"({', '.join(_explicitly_passed)}). Use one or the other."
+        )
+
     if config is None:
         config = RubricEvolutionConfig(
-            train_split=train_split,
-            max_metric_calls=max_metric_calls,
-            consistency_runs=consistency_runs,
-            run_dir=run_dir,
+            train_split=train_split if train_split is not _UNSET else 0.7,
+            max_metric_calls=max_metric_calls if max_metric_calls is not _UNSET else 200,
+            consistency_runs=consistency_runs if consistency_runs is not _UNSET else 1,
+            run_dir=run_dir if run_dir is not _UNSET else None,
         )
 
     # Split dataset into train and validation
@@ -234,7 +251,7 @@ def evolve_rubric(
         judge_model=judge_model,
         base_role=role,
         base_policy=policy,
-        base_rituals=rituals,
+        base_output_constraints=output_constraints,
         judge_api_key=judge_api_key,
         judge_temperature=config.judge_temperature,
         judge_max_tokens=config.judge_max_tokens,
@@ -422,6 +439,20 @@ class _CoEvolutionAcceptance:
     effectively accepts neutral meta-mutations while still requiring real
     improvement for target mutations (since those change the evaluation
     score).
+
+    Known limitation
+    ~~~~~~~~~~~~~~~~
+    The meta-vs-target distinction does NOT actually work as designed.
+    ``_get_mutated_component`` cannot reliably detect which component was
+    mutated because GEPA proposals do not expose the mutated component
+    name in their metadata, and the parent candidate is not accessible
+    from the acceptance criterion interface to perform a diff. As a
+    result, ``_get_mutated_component`` always returns ``None``, the
+    ``is_meta`` flag is always ``False``, and **all** mutations
+    (including meta-component mutations) are routed through the strict
+    ``_target_acceptance`` path. In practice this means meta-component
+    mutations that are score-neutral will be rejected, reducing the
+    effectiveness of co-evolution for meta-components.
     """
 
     def __init__(
@@ -454,7 +485,14 @@ class _CoEvolutionAcceptance:
 
     @staticmethod
     def _get_mutated_component(proposal: Any) -> str | None:
-        """Find which component was changed by diffing old/new candidates."""
+        """Find which component was changed by diffing old/new candidates.
+
+        NOTE: This method always returns None in practice. GEPA proposals
+        do not populate ``metadata["mutated_component"]``, and the parent
+        candidate is not accessible from the acceptance interface to
+        perform a diff. See class docstring "Known limitation" for the
+        full impact analysis.
+        """
         if not hasattr(proposal, 'candidate') or not hasattr(proposal, 'metadata'):
             return None
         # The metadata may contain the component that was mutated
@@ -507,7 +545,7 @@ def evolve_rubric_v3(
     *,
     role: RoleSpec | None = None,
     policy: SurfacePolicy | None = None,
-    rituals: list[RitualConstraint] | None = None,
+    output_constraints: list[OutputConstraint] | None = None,
     judge_api_key: str | None = None,
     reflection_api_key: str | None = None,
     config: CoEvolutionConfig | None = None,
@@ -527,7 +565,7 @@ def evolve_rubric_v3(
         reflection_model: harn_ai Model for GEPA's reflection LM.
         role: Optional RoleSpec for the judge persona.
         policy: Optional SurfacePolicy for rendering.
-        rituals: Optional ritual constraints.
+        output_constraints: Optional output constraints.
         judge_api_key: API key for judge model.
         reflection_api_key: API key for reflection model.
         config: Full configuration. If None, uses defaults.
@@ -592,7 +630,7 @@ def evolve_rubric_v3(
         judge_model=judge_model,
         base_target_role=role,
         base_policy=policy,
-        base_rituals=rituals,
+        base_output_constraints=output_constraints,
         judge_api_key=judge_api_key,
         judge_temperature=config.judge_temperature,
         judge_max_tokens=config.judge_max_tokens,
@@ -632,9 +670,6 @@ def evolve_rubric_v3(
     logger = EvolutionProgress(total_budget=config.max_metric_calls)
     experiment_tracker = create_experiment_tracker()
     rng_gepa = random.Random(config.seed)
-
-    # Build component selector that respects frozen keys
-    evolvable_keys = [k for k in seed_candidate if k not in frozen_keys]
 
     reflective_proposer = ReflectiveMutationProposer(
         logger=logger,

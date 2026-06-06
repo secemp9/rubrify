@@ -20,7 +20,7 @@ from gepa.core.adapter import EvaluationBatch, GEPAAdapter
 from harn_ai.types import Model as HarnifyModel
 
 from rubrify.engine.judgment import Judgment
-from rubrify.ir.constraints import RitualConstraint
+from rubrify.ir.constraints import OutputConstraint
 from rubrify.ir.roles import RoleSpec, SurfacePolicy
 from rubrify.ir.types import Rubric
 
@@ -70,7 +70,7 @@ class CoEvolutionAdapter(
         *,
         base_target_role: RoleSpec | None = None,
         base_policy: SurfacePolicy | None = None,
-        base_rituals: list[RitualConstraint] | None = None,
+        base_output_constraints: list[OutputConstraint] | None = None,
         judge_api_key: str | None = None,
         judge_temperature: float = 0.0,
         judge_max_tokens: int = 2048,
@@ -91,7 +91,7 @@ class CoEvolutionAdapter(
             judge_model=judge_model,
             base_role=base_target_role,
             base_policy=base_policy,
-            base_rituals=base_rituals,
+            base_output_constraints=base_output_constraints,
             judge_api_key=judge_api_key,
             judge_temperature=judge_temperature,
             judge_max_tokens=judge_max_tokens,

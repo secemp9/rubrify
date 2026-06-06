@@ -9,14 +9,14 @@ harn_ai's complete_simple is: async (Model, Context, opts) -> AssistantMessage
 
 from __future__ import annotations
 
-import asyncio
-import concurrent.futures
 import time
 from collections.abc import Callable
 from typing import Any
 
 from harn_ai.stream import complete_simple
 from harn_ai.types import Context, Model, SimpleStreamOptions, UserMessage
+
+from rubrify.evolve.async_bridge import run_async
 
 
 def make_harn_lm(
@@ -69,16 +69,7 @@ def make_harn_lm(
                     text_parts.append(block.text)
             return "\n".join(text_parts)
 
-        # Async-to-sync bridge: use existing event loop or create one
-        try:
-            asyncio.get_running_loop()
-            # Already in an async context -- run in a thread to avoid
-            # nested event loop issues
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                future = pool.submit(asyncio.run, _call())
-                return future.result()
-        except RuntimeError:
-            return asyncio.run(_call())
+        return run_async(_call())
 
     return lm_fn
 

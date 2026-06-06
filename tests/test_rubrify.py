@@ -36,6 +36,14 @@ from rubrify.codecs.json_codec import (
 )
 from rubrify.engine.judge import Judge, JudgeConfig
 from rubrify.engine.judgment import CriterionJudgment
+from rubrify.ir.constraints import (
+    CharLimitConstraint,
+    ItemCountConstraint,
+    PrefixSuffixConstraint,
+    TokenConstraint,
+    WordCountConstraint,
+)
+from rubrify.compiler.passes import audit_output_constraints
 
 
 # ── Helpers ───────────────────────────────────────────────────────
@@ -142,6 +150,59 @@ class TestIRValidation:
 
 
 # ═════════════════════════════════════════════════════════════════
+# 1b. Execution Strategy & Constraint Scope Validation
+# ═════════════════════════════════════════════════════════════════
+
+
+class TestExecutionStrategy:
+    """Validate execution_strategy on SurfacePolicy and scope on OutputConstraints."""
+
+    def test_surface_policy_accepts_valid_strategies(self):
+        for strategy in ("holistic", "grouped", "per_criterion"):
+            sp = SurfacePolicy(execution_strategy=strategy)
+            assert sp.execution_strategy == strategy
+
+    def test_surface_policy_rejects_invalid_strategy(self):
+        with pytest.raises(ValidationError):
+            SurfacePolicy(execution_strategy="round_robin")
+
+    def test_constraint_scope_defaults_to_call(self):
+        """All constraint variants default their scope field to 'call'."""
+        ps = PrefixSuffixConstraint(
+            id="ps", description="d", target_field="rationale", prefix="X"
+        )
+        wc = WordCountConstraint(
+            id="wc", description="d", target_field="rationale", count=5, mode="exactly"
+        )
+        cl = CharLimitConstraint(
+            id="cl", description="d", target_field="rationale", limit=100, mode="max"
+        )
+        ic = ItemCountConstraint(
+            id="ic", description="d", target_field="evidence", count=2, mode="min"
+        )
+        tk = TokenConstraint(
+            id="tk", description="d", target_field="rationale", token="X"
+        )
+        for c in (ps, wc, cl, ic, tk):
+            assert c.scope == "call", f"{type(c).__name__} did not default scope to 'call'"
+
+    def test_constraint_accepts_valid_scopes(self):
+        for scope in ("call", "criterion", "judgment"):
+            c = TokenConstraint(
+                id="tk", description="d", target_field="rationale",
+                token="X", scope=scope,
+            )
+            assert c.scope == scope
+
+    def test_constraint_rejects_invalid_scope(self):
+        with pytest.raises(ValidationError):
+            TokenConstraint(
+                id="tk", description="d", target_field="rationale",
+                token="X", scope="global",
+            )
+
+
+# ═════════════════════════════════════════════════════════════════
 # 2. Scale Normalization
 # ═════════════════════════════════════════════════════════════════
 
@@ -219,11 +280,12 @@ class TestCompiler:
         with pytest.raises(ValidationError):
             result.bundle.locked = False
 
-    def test_normalize_sets_prompt_key(self):
+    def test_compilation_preserves_criteria(self):
         rubric = _make_simple_rubric()
         result = compile_rubric(rubric)
-        for c in result.bundle.rubric.criteria:
-            assert c.prompt_key is not None
+        assert len(result.bundle.rubric.criteria) == len(rubric.criteria)
+        for orig, compiled in zip(rubric.criteria, result.bundle.rubric.criteria):
+            assert compiled.id == orig.id
 
     def test_bindings_generated_for_each_criterion(self):
         rubric = _make_simple_rubric()
@@ -255,6 +317,27 @@ class TestCompiler:
         result = _compile()
         assert result.issues == []
         assert result.ok
+
+    def test_audit_warns_per_criterion_hard_call_scope(self):
+        """Compiling with per_criterion strategy + hard call-scoped constraint produces a warning."""
+        rubric = _make_simple_rubric()
+        policy = SurfacePolicy(execution_strategy="per_criterion")
+        constraints = [
+            TokenConstraint(
+                id="tk_hard",
+                description="must contain VERDICT",
+                target_field="rationale",
+                token="VERDICT",
+                enforcement="hard",
+                scope="call",
+            ),
+        ]
+        result = compile_rubric(rubric, policy=policy, output_constraints=constraints)
+        # Should have an issue about scope='call' + enforcement='hard' in per_criterion mode
+        assert any(
+            "tk_hard" in issue and "per_criterion" in issue
+            for issue in result.issues
+        )
 
 
 # ═════════════════════════════════════════════════════════════════
@@ -401,7 +484,145 @@ class TestJsonCodec:
 
 
 # ═════════════════════════════════════════════════════════════════
-# 6. Integration: Full Pipeline with Faux Provider
+# 6. Output Constraints
+# ═════════════════════════════════════════════════════════════════
+
+
+class TestOutputConstraints:
+    """OutputConstraint variants: check() logic, validation, and audit pass."""
+
+    # ── PrefixSuffixConstraint ────────────────────────────────────
+
+    def test_prefix_suffix_check_pass(self):
+        c = PrefixSuffixConstraint(
+            id="ps1", description="starts with BECAUSE:", target_field="rationale",
+            prefix="BECAUSE:", suffix=".",
+        )
+        assert c.check("BECAUSE: the answer is correct.") is None
+
+    def test_prefix_suffix_check_fail(self):
+        c = PrefixSuffixConstraint(
+            id="ps2", description="must start with BECAUSE:", target_field="rationale",
+            prefix="BECAUSE:",
+        )
+        result = c.check("The answer is correct.")
+        assert result is not None
+        assert "BECAUSE:" in result
+
+    # ── WordCountConstraint ───────────────────────────────────────
+
+    def test_word_count_check_exactly(self):
+        c = WordCountConstraint(
+            id="wc1", description="exactly five words", target_field="rationale",
+            count=5, mode="exactly",
+        )
+        assert c.check("one two three four five") is None
+        result = c.check("one two three")
+        assert result is not None
+        assert "exactly 5" in result
+
+    def test_word_count_check_min_max(self):
+        c_min = WordCountConstraint(
+            id="wc_min", description="at least 3 words", target_field="rationale",
+            count=3, mode="min",
+        )
+        assert c_min.check("one two three four") is None
+        result_min = c_min.check("one two")
+        assert result_min is not None
+        assert "at least 3" in result_min
+
+        c_max = WordCountConstraint(
+            id="wc_max", description="at most 3 words", target_field="rationale",
+            count=3, mode="max",
+        )
+        assert c_max.check("one two") is None
+        result_max = c_max.check("one two three four")
+        assert result_max is not None
+        assert "at most 3" in result_max
+
+    # ── CharLimitConstraint ───────────────────────────────────────
+
+    def test_char_limit_check(self):
+        c = CharLimitConstraint(
+            id="cl1", description="at most 10 chars", target_field="rationale",
+            limit=10, mode="max",
+        )
+        assert c.check("short") is None
+        result = c.check("this is way too long")
+        assert result is not None
+        assert "at most 10" in result
+
+    # ── ItemCountConstraint ───────────────────────────────────────
+
+    def test_item_count_check(self):
+        c = ItemCountConstraint(
+            id="ic1", description="exactly 3 items", target_field="evidence",
+            count=3, mode="exactly", delimiter=",",
+        )
+        assert c.check("a, b, c") is None
+        result = c.check("a, b")
+        assert result is not None
+        assert "exactly 3" in result
+
+    # ── TokenConstraint ───────────────────────────────────────────
+
+    def test_token_check_contains(self):
+        c = TokenConstraint(
+            id="tk1", description="must contain VERDICT", target_field="rationale",
+            token="VERDICT", must_contain=True,
+        )
+        assert c.check("The VERDICT is guilty.") is None
+        result = c.check("The answer is guilty.")
+        assert result is not None
+        assert "VERDICT" in result
+
+    def test_token_check_must_not_contain(self):
+        c = TokenConstraint(
+            id="tk2", description="must not contain TODO", target_field="rationale",
+            token="TODO", must_contain=False,
+        )
+        assert c.check("The answer is complete.") is None
+        result = c.check("This is TODO later.")
+        assert result is not None
+        assert "TODO" in result
+
+    # ── Validation errors ─────────────────────────────────────────
+
+    def test_prefix_suffix_requires_at_least_one(self):
+        with pytest.raises(ValidationError, match="At least one"):
+            PrefixSuffixConstraint(
+                id="ps_bad", description="no prefix or suffix", target_field="rationale",
+            )
+
+    def test_word_count_rejects_nonpositive(self):
+        with pytest.raises(ValidationError, match="count must be positive"):
+            WordCountConstraint(
+                id="wc_bad", description="zero count", target_field="rationale",
+                count=0, mode="exactly",
+            )
+
+    # ── audit_output_constraints ──────────────────────────────────
+
+    def test_audit_catches_duplicate_ids(self):
+        constraints = [
+            TokenConstraint(id="dup", description="a", target_field="rationale", token="X"),
+            TokenConstraint(id="dup", description="b", target_field="rationale", token="Y"),
+        ]
+        rubric = _make_simple_rubric()
+        issues = audit_output_constraints(constraints, rubric)
+        assert any("Duplicate" in i and "dup" in i for i in issues)
+
+    def test_audit_catches_unknown_target_field(self):
+        constraints = [
+            TokenConstraint(id="unk", description="a", target_field="nonexistent_field", token="X"),
+        ]
+        rubric = _make_simple_rubric()
+        issues = audit_output_constraints(constraints, rubric)
+        assert any("nonexistent_field" in i and "not a recognized field" in i for i in issues)
+
+
+# ═════════════════════════════════════════════════════════════════
+# 7. Integration: Full Pipeline with Faux Provider
 # ═════════════════════════════════════════════════════════════════
 
 
@@ -415,6 +636,7 @@ class TestIntegration:
         yield reg
         reg.unregister()
 
+    @pytest.mark.asyncio
     async def test_full_pipeline_with_tool_call(self, faux):
         from harn_ai.providers.faux import faux_assistant_message, faux_tool_call
 
@@ -454,6 +676,7 @@ class TestIntegration:
         assert judgment.aggregation.normalized_score > 0
         assert judgment.decision is not None
 
+    @pytest.mark.asyncio
     async def test_text_fallback_when_no_tool_call(self, faux):
         from harn_ai.providers.faux import faux_assistant_message, faux_text
 
@@ -474,6 +697,7 @@ class TestIntegration:
         assert cj.criterion_id == "C1"
         assert cj.unit_score > 0
 
+    @pytest.mark.asyncio
     async def test_judge_tracks_usage(self, faux):
         from harn_ai.providers.faux import faux_assistant_message, faux_tool_call
 
@@ -500,6 +724,7 @@ class TestIntegration:
         assert judge.evaluation_count == 1
         assert judge.total_usage.api_calls >= 1
 
+    @pytest.mark.asyncio
     async def test_disqualifier_zeros_score(self, faux):
         from harn_ai.providers.faux import faux_assistant_message, faux_tool_call
 
@@ -531,6 +756,7 @@ class TestIntegration:
         assert "DQ1" in judgment.violations
         assert judgment.decision == "Rejected"
 
+    @pytest.mark.asyncio
     async def test_binary_scale_integration(self, faux):
         from harn_ai.providers.faux import faux_assistant_message, faux_tool_call
 
@@ -563,6 +789,7 @@ class TestIntegration:
         assert cj.criterion_id == "B1"
         assert cj.unit_score == 1.0
 
+    @pytest.mark.asyncio
     async def test_multiple_evaluations_accumulate_usage(self, faux):
         from harn_ai.providers.faux import faux_assistant_message, faux_tool_call
 

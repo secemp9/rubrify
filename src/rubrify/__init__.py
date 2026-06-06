@@ -42,9 +42,11 @@ from rubrify.ir.types import (  # noqa: F401
     PatternEntry, Rubric, RubricMeta, Scale, ScaleAnchor,
 )
 from rubrify.ir.constraints import (  # noqa: F401
-    AuthorityBlock, ConstraintBinding, RitualConstraint,
+    AuthorityBlock, CharLimitConstraint, ConstraintBinding,
+    ItemCountConstraint, OutputConstraint, PrefixSuffixConstraint,
+    TokenConstraint, WordCountConstraint,
 )
-from rubrify.ir.roles import GenreModule, RoleSpec, SurfacePolicy  # noqa: F401
+from rubrify.ir.roles import RoleSpec, SurfacePolicy  # noqa: F401
 
 try:
     from rubrify.evolve import (  # noqa: F401

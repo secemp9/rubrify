@@ -54,7 +54,7 @@ class Judgment(SchemaModel):
     aggregation: AggregatedScore = AggregatedScore()
     decision: str | None = None
     violations: list[str] = []
-    ritual_warnings: list[str] = []
+    constraint_warnings: list[str] = []
     pattern_hits: dict[str, list[str]] = {}
     usage: JudgeUsage = JudgeUsage()
     timestamp: int = 0

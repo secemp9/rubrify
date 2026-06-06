@@ -7,10 +7,9 @@ for a full eval round).
 
 from __future__ import annotations
 
-import asyncio
-import concurrent.futures
-
 from harn_ai.types import Model
+
+from rubrify.evolve.async_bridge import run_async
 
 from rubrify.compiler.compiler import compile_rubric
 from rubrify.engine.judge import Judge, JudgeConfig
@@ -206,12 +205,7 @@ class ProposalQualityGate:
         async def _run():
             return await judge.evaluate(self._compiled.bundle, response)
 
-        try:
-            asyncio.get_running_loop()
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                judgment = pool.submit(asyncio.run, _run()).result()
-        except RuntimeError:
-            judgment = asyncio.run(_run())
+        judgment = run_async(_run())
 
         score = judgment.aggregation.normalized_score / 100.0
         passed = score >= self._threshold
