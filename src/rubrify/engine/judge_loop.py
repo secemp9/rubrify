@@ -102,7 +102,6 @@ async def run_judge_loop(
     decision = _compute_decision(aggregation, violations, thresholds=bundle.surface_policy.decision_thresholds)
 
     return Judgment(
-        rubric_hash=bundle.hash,
         criterion_judgments=judgments,
         aggregation=aggregation,
         decision=decision,

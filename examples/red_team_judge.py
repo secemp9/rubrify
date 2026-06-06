@@ -306,7 +306,6 @@ async def main() -> None:
     bundle = result.bundle
 
     print(f"Rubric: {bundle.rubric.meta.name} v{bundle.rubric.meta.version}")
-    print(f"Hash:   {bundle.hash}")
     print(f"Locked: {bundle.locked}")
     if result.issues:
         print(f"Compilation issues: {result.issues}")

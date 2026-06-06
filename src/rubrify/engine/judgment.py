@@ -50,7 +50,6 @@ class JudgeUsage:
 
 class Judgment(SchemaModel):
     """The complete judgment output. Terminal object of a judge execution."""
-    rubric_hash: str
     criterion_judgments: list[CriterionJudgment] = []
     aggregation: AggregatedScore = AggregatedScore()
     decision: str | None = None

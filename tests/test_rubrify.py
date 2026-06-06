@@ -213,22 +213,11 @@ class TestCompiler:
         result = _compile()
         assert result.ok
         assert result.bundle.locked is True
-        assert result.bundle.hash.startswith("rubric_")
-
-    def test_bundle_hash_is_deterministic(self):
-        rubric = _make_simple_rubric()
-        r1 = compile_rubric(rubric)
-        r2 = compile_rubric(rubric)
-        assert r1.bundle.hash == r2.bundle.hash
 
     def test_bundle_is_frozen(self):
         result = _compile()
         with pytest.raises(ValidationError):
             result.bundle.locked = False
-
-    def test_bundle_verify_passes(self):
-        result = _compile()
-        assert result.bundle.verify() is True
 
     def test_normalize_sets_prompt_key(self):
         rubric = _make_simple_rubric()
@@ -261,11 +250,6 @@ class TestCompiler:
         )
         result = compile_rubric(rubric)
         assert "p1" in result.bundle.compiled_patterns
-
-    def test_hash_changes_when_rubric_changes(self):
-        r1 = _compile(_make_simple_rubric(goal="Goal A"))
-        r2 = _compile(_make_simple_rubric(goal="Goal B"))
-        assert r1.bundle.hash != r2.bundle.hash
 
     def test_compilation_issues_empty_for_clean_rubric(self):
         result = _compile()
@@ -466,7 +450,6 @@ class TestIntegration:
         judge = Judge(JudgeConfig(model=model))
         judgment = await judge.evaluate(result.bundle, "Test response text.")
 
-        assert judgment.rubric_hash == result.bundle.hash
         assert len(judgment.criterion_judgments) == 2
         assert judgment.aggregation.normalized_score > 0
         assert judgment.decision is not None

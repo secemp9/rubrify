@@ -1063,7 +1063,7 @@ if __name__ == "__main__":
     print(f"[A] {b.rubric.meta.name} v{b.rubric.meta.version}")
     print(f"    Criteria: {len(b.rubric.criteria)}, DQ: {len(b.rubric.disqualifiers)}, "
           f"Patterns: {len(b.rubric.patterns)}")
-    print(f"    Hash: {b.hash}")
+    print(f"    Locked: {b.locked}")
     print(f"    Issues: {cj.issues or '(none)'}")
     print()
 
@@ -1076,13 +1076,13 @@ if __name__ == "__main__":
     print(f"    Core criteria: {len(active_core)}, Genre criteria: {len(genre_crit)}, "
           f"DQ: {len(b.rubric.disqualifiers)}, Patterns: {len(b.rubric.patterns)}")
     print(f"    Groups: {[g.id for g in b.rubric.groups]}")
-    print(f"    Hash: {b.hash}")
+    print(f"    Locked: {b.locked}")
     print(f"    Issues: {zj.issues or '(none)'}")
     print()
 
     # B2. ZinsserJudge with genre
     zj2 = zinsser_judge(genre="travel")
-    print(f"    (with genre='travel') Hash: {zj2.bundle.hash}")
+    print(f"    (with genre='travel') Locked: {zj2.bundle.locked}")
     print()
 
     # C. AntiLLMY
@@ -1091,7 +1091,7 @@ if __name__ == "__main__":
     print(f"[C] {b.rubric.meta.name} v{b.rubric.meta.version}")
     print(f"    Criteria: {len(b.rubric.criteria)}, DQ: {len(b.rubric.disqualifiers)}, "
           f"Patterns: {len(b.rubric.patterns)}")
-    print(f"    Hash: {b.hash}")
+    print(f"    Locked: {b.locked}")
     print(f"    Issues: {aj.issues or '(none)'}")
     print()
 

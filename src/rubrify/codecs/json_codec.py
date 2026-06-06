@@ -48,7 +48,7 @@ def parse_judgment_json(raw: str) -> dict[str, Any]:
     )
 
 
-# ── Dynamic model construction (cached per bundle hash) ──────────
+# ── Dynamic model construction (cached per criterion specs) ──────
 
 def _scale_to_field_type(scale: Any) -> tuple:
     """Derive Pydantic field type from scale for dynamic model creation."""
@@ -65,11 +65,8 @@ def _scale_to_field_type(scale: Any) -> tuple:
 
 
 @lru_cache(maxsize=32)
-def _build_judgment_model_cached(bundle_hash: str, criterion_specs: tuple) -> type:
-    """Build and cache a dynamic Pydantic model keyed by bundle hash.
-
-    The criterion_specs tuple makes the cache key content-dependent.
-    """
+def _build_judgment_model_cached(criterion_specs: tuple) -> type:
+    """Build and cache a dynamic Pydantic model keyed by criterion specs."""
     criterion_fields = {}
     for cid, scale_kind in criterion_specs:
         # Reconstruct field type from the kind string
@@ -98,11 +95,11 @@ def _build_judgment_model_cached(bundle_hash: str, criterion_specs: tuple) -> ty
 def build_judgment_model(bundle: "RubricBundle") -> type:
     """Build a dynamic Pydantic model for this rubric's expected output.
 
-    Cached per bundle hash — calling this 10 times for a 10-criterion
+    Cached per criterion specs — calling this 10 times for a 10-criterion
     rubric creates the model once.
     """
     specs = tuple((c.id, c.scale.kind) for c in bundle.rubric.criteria)
-    return _build_judgment_model_cached(bundle.hash, specs)
+    return _build_judgment_model_cached(specs)
 
 
 # ── Tool construction for structured output ──────────────────────

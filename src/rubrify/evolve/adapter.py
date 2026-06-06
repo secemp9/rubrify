@@ -149,7 +149,7 @@ class RubricEvolverAdapter(
 
         if not bundle.locked:
             # Compilation failed -- return zero scores with diagnostic info
-            dummy_judgment = Judgment(rubric_hash="", violations=["compilation_failed"])
+            dummy_judgment = Judgment(violations=["compilation_failed"])
             return EvaluationBatch(
                 outputs=[dummy_judgment] * len(batch),
                 scores=[0.0] * len(batch),
