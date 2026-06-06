@@ -16,6 +16,12 @@ Requires Python >= 3.12.
 pip install rubrify
 ```
 
+Or with uv:
+
+```bash
+uv add rubrify
+```
+
 Core dependencies: `harn-ai`, `harn-agent`, `pydantic>=2.10`, `defusedxml>=0.7`.
 
 For the rubric evolution system (GEPA integration):
@@ -24,7 +30,25 @@ For the rubric evolution system (GEPA integration):
 pip install rubrify[evolve]
 ```
 
+Or with uv:
+
+```bash
+uv add rubrify[evolve]
+```
+
 This adds `gepa>=0.1.0` as a dependency.
+
+To upgrade to the latest version:
+
+```bash
+pip install --upgrade rubrify
+```
+
+Or with uv:
+
+```bash
+uv add rubrify --upgrade
+```
 
 ---
 

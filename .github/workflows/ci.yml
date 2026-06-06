@@ -16,12 +16,10 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+        run: uv python install 3.12
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: uv sync --no-sources --extra dev
 
       - name: Run tests
-        run: python -m pytest tests/ -v
+        run: uv run pytest tests/ -v
