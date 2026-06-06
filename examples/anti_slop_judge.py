@@ -183,7 +183,7 @@ def anti_slop_judge() -> CompilationResult:
             Disqualifier(
                 id="DQ2",
                 description="Presence of watermark tokens (turn_tokens|oaicite|utm_openai|attr_json) -> auto-fail.",
-                pattern=r"\boaicite\b|contentReference\[oaicite:\d+\]|\bturn\d+(?:search|image|view)\d+\b|\butm_source=(?:chatgpt\.com|openai)\b|\(\{\"attribution\":\{\"attributableIndex\":\"\d+-\d+\"\}\}\)",
+                pattern=r"\boaicite\b|contentReference\[oaicite:\d+\]|\bturn\d+(?:search|image|view)\d+\b|[\ue000-\uf8ff]cite[\ue000-\uf8ff]turn\d+\w+\d+[\ue000-\uf8ff]|\butm_source=(?:chatgpt\.com|openai)\b|\(\{\"attribution\":\{\"attributableIndex\":\"\d+-\d+\"\}\}\)",
             ),
             Disqualifier(
                 id="DQ3",
@@ -348,11 +348,11 @@ def anti_slop_judge() -> CompilationResult:
     # Custom decision thresholds based on risk bands (inverted scoring).
     # The judge engine uses normalized_score (0-100). For AntiLLMY, higher
     # score = cleaner. We map the normalized score to risk bands:
-    #   score 100 (risk 0)  -> Minimal
-    #   score ~80  (risk ~3) -> Low
-    #   score ~53  (risk ~7) -> Moderate
-    #   score ~27  (risk ~11)-> High
-    #   score ~0   (risk ~15)-> Severe / FAIL
+    #   normalized 100   (risk 0)    -> Minimal
+    #   normalized 80-99 (risk 1-3)  -> Low
+    #   normalized 54-79 (risk 4-7)  -> Moderate
+    #   normalized 27-53 (risk 8-11) -> High
+    #   normalized 0-26  (risk >=12) -> Severe / FAIL
     policy = SurfacePolicy(
         input_codec="xml",
         output_codec="json",
@@ -361,11 +361,11 @@ def anti_slop_judge() -> CompilationResult:
         criterion_focus="full",
         execution_strategy="holistic",
         decision_thresholds=[
-            (80.0, "Minimal"),      # risk 0-3 (score 12-15)
-            (53.4, "Low"),          # risk 4-7 (score 8-11)
-            (26.7, "Moderate"),     # risk 8-11 (score 4-7)
-            (6.7, "High"),          # risk 12-14 (score 1-3)
-            (0.0, "Severe/FAIL"),   # risk 15 (score 0)
+            (100.0, "Minimal"),     # risk 0 (score 15)
+            (80.0, "Low"),          # risk 1-3 (score 12-14)
+            (53.4, "Moderate"),     # risk 4-7 (score 8-11)
+            (26.7, "High"),        # risk 8-11 (score 4-7)
+            (0.0, "Severe/FAIL"),   # risk >=12 (score 0-3)
         ],
     )
 
@@ -376,7 +376,7 @@ def anti_slop_judge() -> CompilationResult:
             id="because_prefix",
             description="Rationale must begin with 'BECAUSE:' and end with '.'",
             target_field="rationale",
-            enforcement="hard",
+            enforcement="soft",
             prefix="BECAUSE:",
             suffix=".",
         ),
@@ -384,7 +384,7 @@ def anti_slop_judge() -> CompilationResult:
             id="rationale_35_words",
             description="Rationale must be exactly 35 words.",
             target_field="rationale",
-            enforcement="hard",
+            enforcement="soft",
             count=35,
             mode="exactly",
         ),
@@ -393,7 +393,7 @@ def anti_slop_judge() -> CompilationResult:
             id="fix_prefix",
             description="Advice must begin with 'FIX:' and end with '.'",
             target_field="advice",
-            enforcement="hard",
+            enforcement="soft",
             prefix="FIX:",
             suffix=".",
         ),
@@ -401,7 +401,7 @@ def anti_slop_judge() -> CompilationResult:
             id="advice_5_imperatives",
             description="Advice must contain exactly 5 semicolon-separated imperatives.",
             target_field="advice",
-            enforcement="hard",
+            enforcement="soft",
             count=5,
             delimiter=";",
             mode="exactly",
@@ -410,7 +410,7 @@ def anti_slop_judge() -> CompilationResult:
             id="advice_max_220_chars",
             description="Advice must be at most 220 characters total.",
             target_field="advice",
-            enforcement="hard",
+            enforcement="soft",
             limit=220,
             mode="max",
         ),

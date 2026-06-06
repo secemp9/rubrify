@@ -34,7 +34,9 @@ from rubrify.codecs.json_codec import (
 from rubrify.codecs.xml_codec import render_rubric_xml
 
 # ── Configuration ──────────────────────────────────────────────────
-API_KEY = "sk-9d7669c92e7d4147839b326205128c00"
+API_KEY = os.environ.get("DEEPSEEK_API_KEY")
+if not API_KEY:
+    raise SystemExit("Set DEEPSEEK_API_KEY environment variable")
 RESPONSE_TEXT = (
     "The bridge collapsed because the steel bolts corroded over twenty years "
     "of exposure to salt air. Three engineers inspected the site. They found "

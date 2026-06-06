@@ -2,13 +2,14 @@
 """Rubric library: re-export facade for all researcher rubrics.
 
 Each rubric has been split into its own module:
-  - compliance_judge.py  -> compliance_judge()
-  - zinsser_judge.py     -> zinsser_judge(genre=None)
-  - anti_slop_judge.py   -> anti_slop_judge()
+  - compliance_judge.py    -> compliance_judge()
+  - zinsser_judge.py       -> zinsser_judge(genre=None)
+  - anti_slop_judge.py     -> anti_slop_judge()
+  - completeness_judge.py  -> completeness_judge()
 
-This module re-exports all three so existing imports continue to work:
+This module re-exports all four so existing imports continue to work:
 
-    from examples.rubric_library import compliance_judge, zinsser_judge, anti_slop_judge
+    from examples.rubric_library import compliance_judge, zinsser_judge, anti_slop_judge, completeness_judge
 """
 
 from __future__ import annotations
@@ -16,8 +17,9 @@ from __future__ import annotations
 from examples.compliance_judge import compliance_judge
 from examples.zinsser_judge import zinsser_judge
 from examples.anti_slop_judge import anti_slop_judge
+from examples.completeness_judge import completeness_judge
 
-__all__ = ["compliance_judge", "zinsser_judge", "anti_slop_judge"]
+__all__ = ["compliance_judge", "zinsser_judge", "anti_slop_judge", "completeness_judge"]
 
 
 # ---------------------------------------------------------------------------
@@ -63,6 +65,16 @@ if __name__ == "__main__":
           f"Patterns: {len(b.rubric.patterns)}")
     print(f"    Locked: {b.locked}")
     print(f"    Issues: {aj.issues or '(none)'}")
+    print()
+
+    # D. CompletenessJudge
+    coj = completeness_judge()
+    b = coj.bundle
+    print(f"[D] {b.rubric.meta.name} v{b.rubric.meta.version}")
+    print(f"    Criteria: {len(b.rubric.criteria)}, DQ: {len(b.rubric.disqualifiers)}, "
+          f"Patterns: {len(b.rubric.patterns)}")
+    print(f"    Locked: {b.locked}")
+    print(f"    Issues: {coj.issues or '(none)'}")
     print()
 
     print("All rubrics compiled successfully.")

@@ -27,7 +27,9 @@ from rubrify.engine.judge_loop import (
 )
 
 # ── Configuration ──────────────────────────────────────────────────
-API_KEY = "sk-9d7669c92e7d4147839b326205128c00"
+API_KEY = os.environ.get("DEEPSEEK_API_KEY")
+if not API_KEY:
+    raise SystemExit("Set DEEPSEEK_API_KEY environment variable")
 RESPONSE_TEXT = (
     "The bridge collapsed because the steel bolts corroded over twenty years "
     "of exposure to salt air."

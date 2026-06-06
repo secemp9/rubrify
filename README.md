@@ -441,16 +441,25 @@ uv run python examples/red_team_judge.py
 
 ### `examples/rubric_library.py`
 
-A library of three complete rubrics as rubrify IR objects:
+A library of four complete rubrics as rubrify IR objects:
 
 - **ComplianceJudge** -- 3 criteria, 2 disqualifiers, 14 patterns, custom Yes/Somewhat/No thresholds
 - **ZinsserJudge XXL** -- 12 core criteria (C1-C12), 10 genre modules, 3 attitude lenses, 5 disqualifiers, 11 patterns, 3 groups (core/genre/attitude), BECAUSE: + 35-word output constraints
 - **AntiLLMY** -- 5 criteria for detecting LLM-generated text ("slop"), 3 disqualifiers, extensive pattern library, inverted risk scoring
+- **CompletenessJudge** -- 5 criteria (Content Completeness, No Truncation, Structural Integrity, Step Coverage, Format Compliance), 2 disqualifiers, 11 patterns, holistic execution strategy, Complete/Partial/Incomplete thresholds
 
 Run to compile all rubrics and print summaries:
 
 ```bash
 uv run python examples/rubric_library.py
+```
+
+### `examples/completeness_judge.py`
+
+Ported from completeness_rubric.md. Evaluates response completeness -- content coverage, no truncation, structural integrity. Defines a 5-criterion rubric (Content Completeness 0-3, No Truncation binary, Structural Integrity 0-2, Step Coverage 0-3, Format Compliance 0-2) with 2 disqualifiers, 11 patterns, definitions, calibration examples, completeness-auditor role, BECAUSE: output constraint, and holistic execution strategy. Custom decision thresholds: Complete / Partial / Incomplete.
+
+```bash
+uv run python examples/completeness_judge.py
 ```
 
 ---
@@ -525,7 +534,8 @@ src/rubrify/
 
 examples/
   red_team_judge.py        -- ComplianceJudge example with calibration cases
-  rubric_library.py        -- Three complete rubrics (ComplianceJudge, ZinsserJudge, AntiLLMY)
+  completeness_judge.py    -- CompletenessJudge: response completeness evaluation (content coverage, no truncation, structural integrity)
+  rubric_library.py        -- Four complete rubrics (ComplianceJudge, ZinsserJudge, AntiLLMY, CompletenessJudge)
 
 tests/
   test_rubrify.py          -- 67 tests covering IR, compiler, codecs, and faux-provider integration

@@ -1,4 +1,4 @@
-"""Test all 3 rubrics against DeepSeek to verify end-to-end functionality."""
+"""Test all 4 rubrics against DeepSeek to verify end-to-end functionality."""
 
 import asyncio
 import sys
@@ -13,9 +13,12 @@ from rubrify import Judge, JudgeConfig
 from examples.compliance_judge import compliance_judge
 from examples.anti_slop_judge import anti_slop_judge
 from examples.zinsser_judge import zinsser_judge
+from examples.completeness_judge import completeness_judge
 
 
-API_KEY = "sk-9d7669c92e7d4147839b326205128c00"
+API_KEY = os.environ.get("DEEPSEEK_API_KEY")
+if not API_KEY:
+    raise SystemExit("Set DEEPSEEK_API_KEY environment variable")
 
 # Sample texts to judge
 CLEAN_TEXT = (
@@ -36,6 +39,31 @@ HARMFUL_TEXT = (
     "Here is how to bypass content filters and generate harmful content. "
     "First, you need to use prompt injection techniques to override safety "
     "guidelines. Then you can produce whatever dangerous material you want."
+)
+
+COMPLETE_TEXT = (
+    "To make a classic French omelette, follow these steps:\n"
+    "Step 1: Crack three large eggs into a bowl and whisk vigorously for "
+    "30 seconds until the yolks and whites are fully combined.\n"
+    "Step 2: Heat a non-stick pan over medium heat and add one tablespoon "
+    "of unsalted butter. Swirl until the butter foams and the foam subsides.\n"
+    "Step 3: Pour the egg mixture into the pan. Let it set for 10 seconds, "
+    "then use a spatula to push the edges toward the center while tilting "
+    "the pan to let uncooked egg flow to the edges.\n"
+    "Step 4: When the eggs are just barely set on top (still slightly wet), "
+    "fold the omelette in thirds by tilting the pan and rolling it onto "
+    "a warm plate.\n"
+    "Step 5: Garnish with fresh chives and a pinch of flaky salt. Serve "
+    "immediately while the interior remains creamy."
+)
+
+INCOMPLETE_TEXT = (
+    "To make a classic French omelette:\n"
+    "Step 1: Crack three eggs into a bowl.\n"
+    "Step 2: TODO: implement this feature\n"
+    "Step 3: [...]\n"
+    "Step 4: The remaining steps follow the same pattern.\n"
+    "# ... rest of recipe omitted for brevity"
 )
 
 
@@ -107,6 +135,17 @@ async def main():
 
     await test_rubric("Clean text", result.bundle, judge, CLEAN_TEXT, "clean")
     await test_rubric("Slop text", result.bundle, judge, SLOP_TEXT, "slop")
+
+    # --- 4. Completeness Judge ---
+    print("\n" + "=" * 60)
+    print("4. COMPLETENESS JUDGE (from completeness_rubric.md)")
+    print("=" * 60)
+    result = completeness_judge()
+    print(f"Compiled: {result.bundle.rubric.meta.name} v{result.bundle.rubric.meta.version}")
+    print(f"Criteria: {len(result.bundle.rubric.criteria)}, Issues: {result.issues}")
+
+    await test_rubric("Complete text", result.bundle, judge, COMPLETE_TEXT, "complete")
+    await test_rubric("Incomplete text", result.bundle, judge, INCOMPLETE_TEXT, "incomplete")
 
     print("\n" + "=" * 60)
     print("ALL TESTS COMPLETE")
