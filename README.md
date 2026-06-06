@@ -197,7 +197,7 @@ The union type `Scale` is: `Annotated[BinaryScale | OrdinalScale | NominalScale 
 
 **CriterionGroup** provides hierarchical aggregation over criteria. Supported aggregation strategies: `weighted_sum`, `weighted_mean`, `min`, `max`, `all`, `any`.
 
-**Disqualifier** defines an auto-fail condition. Can be pattern-based (regex against the response text) or criterion-linked (triggers when a specific criterion scores 0).
+**Disqualifier** defines an auto-fail condition. Can be pattern-based (regex scanned first against judge rationales, then against the response text) or criterion-linked (triggers when a specific criterion's unit score is 0).
 
 **Rubric** is the mutable, pre-compilation object. It contains criteria, groups, disqualifiers, instructions, patterns (`PatternEntry` for regex matching), definitions (`Definition`), advice rules (`AdviceRule`), and calibration examples (`CalibrationExample`). Model validators enforce unique criterion IDs and valid group/disqualifier references at construction time.
 
@@ -221,6 +221,7 @@ The union type `Scale` is: `Annotated[BinaryScale | OrdinalScale | NominalScale 
 
 - `criterion_id` -- which criterion
 - `output_field` -- JSON path where the judge writes its score (e.g. `criterion_scores.C1`)
+- `evidence_source` -- where evidence should come from (default `"response"`)
 - `projections` -- list of `SurfaceProjection` objects (one per codec)
 - `authority` -- `instruction`, `data`, or `meta`
 
@@ -374,7 +375,7 @@ Both strategies extract criterion scores via typed Pydantic model attribute acce
 
 ### XML Codec
 
-`render_rubric_xml(bundle) -> str` renders a locked `RubricBundle` as an `<LLM_JUDGE_SPEC>` XML document. Uses `xml.etree.ElementTree` for proper DOM construction and escaping (no string concatenation). Uses `defusedxml` for safe parsing.
+`render_rubric_xml(bundle) -> str` renders a locked `RubricBundle` as an `<LLM_JUDGE_SPEC>` XML document. Uses `xml.etree.ElementTree` for proper DOM construction and escaping (no string concatenation). No XML parsing of untrusted input occurs in this codec (it only constructs and serializes).
 
 Key design: bindings drive the criterion rendering. Each criterion's XML attributes come from its binding's `SurfaceProjection(codec="xml")`, not from raw criterion fields. This closes the triple-layer alignment loop.
 
@@ -631,6 +632,9 @@ src/rubrify/
     progress.py            -- EvolutionProgress (pretty ANSI progress logger)
     test_fixtures.py       -- make_compliance_rubric(), make_annotated_dataset() for testing
 
+  bridge/                  -- Optional integrations with third-party RL/eval frameworks
+    verifiers.py           -- make_rubrify_rubric(), make_rubrify_env() (verifiers library bridge)
+
 examples/
   compliance_judge.py      -- ComplianceJudge rubric definition (3 criteria, 2 DQs, 14 patterns)
   anti_slop_judge.py       -- AntiLLMY rubric definition (5 criteria, 3 DQs, extensive pattern library)
@@ -638,6 +642,10 @@ examples/
   completeness_judge.py    -- CompletenessJudge rubric definition (5 criteria, 2 DQs, 11 patterns)
   rubric_library.py        -- Re-export facade for all four rubrics
   red_team_judge.py        -- Demo runner: ComplianceJudge with 4 calibration cases
+  verifiers_env_example.py -- Example: wiring rubrify to the verifiers training loop
+  debug_constraints.py     -- Constraint debugging utility
+  debug_deepseek.py        -- DeepSeek provider debugging utility
+  test_all_rubrics.py      -- Batch compile-and-test runner for all example rubrics
 
 tests/
   test_rubrify.py          -- 67 tests covering IR, compiler, codecs, and faux-provider integration
