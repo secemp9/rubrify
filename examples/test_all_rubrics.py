@@ -1,5 +1,11 @@
 """Test all 4 rubrics against DeepSeek to verify end-to-end functionality."""
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed; API keys must be in environment
+
 import asyncio
 import sys
 from pathlib import Path

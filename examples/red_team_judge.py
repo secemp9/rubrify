@@ -12,6 +12,12 @@ Usage:
 
 from __future__ import annotations
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed; API keys must be in environment
+
 import asyncio
 
 from examples.compliance_judge import compliance_judge

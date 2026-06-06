@@ -28,6 +28,57 @@ This adds `gepa>=0.1.0` as a dependency.
 
 ---
 
+## API Keys
+
+rubrify discovers API keys from environment variables via [harn](https://github.com/secemp9/harn).
+Each provider has a standard env var:
+
+| Provider | Environment Variable |
+|----------|---------------------|
+| DeepSeek | `DEEPSEEK_API_KEY` |
+| OpenAI | `OPENAI_API_KEY` |
+| Anthropic | `ANTHROPIC_API_KEY` |
+| Google | `GEMINI_API_KEY` |
+| Groq | `GROQ_API_KEY` |
+| xAI | `XAI_API_KEY` |
+| Mistral | `MISTRAL_API_KEY` |
+| OpenRouter | `OPENROUTER_API_KEY` |
+| Together | `TOGETHER_API_KEY` |
+| Fireworks | `FIREWORKS_API_KEY` |
+| Cerebras | `CEREBRAS_API_KEY` |
+| HuggingFace | `HF_TOKEN` |
+
+**Option 1: `.env` file** (recommended)
+
+Create a `.env` file in your project root:
+
+```
+DEEPSEEK_API_KEY=sk-your-key-here
+```
+
+Then at the top of your script:
+
+```python
+from dotenv import load_dotenv
+load_dotenv()
+```
+
+Install with `pip install python-dotenv` or `pip install rubrify[dev]`.
+
+**Option 2: Shell export**
+
+```bash
+export DEEPSEEK_API_KEY=sk-your-key-here
+```
+
+**Option 3: Direct parameter**
+
+```python
+judge = Judge(JudgeConfig(model=model, api_key="sk-your-key-here"))
+```
+
+---
+
 ## Quick Start
 
 ### Define and compile a rubric

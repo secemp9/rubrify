@@ -7,6 +7,12 @@ blocks -- so we can see exactly what DeepSeek returns and why the framework
 fails to extract scores.
 """
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed; API keys must be in environment
+
 import asyncio
 import json
 import os

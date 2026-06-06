@@ -9,6 +9,12 @@ Answers the question: Is the 35-word constraint correctly enforced, or is
 there a design bug causing it to zero all scores?
 """
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed; API keys must be in environment
+
 import asyncio
 import json
 import sys

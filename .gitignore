@@ -6,3 +6,6 @@ build/
 .eggs/
 *.egg
 .pytest_cache/
+.env
+!.env.example
+not_to_commit/
