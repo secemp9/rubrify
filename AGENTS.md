@@ -53,7 +53,7 @@ Public API surface. Re-exports all core types from ir/, compiler/, codecs/, and 
 |---|---|---|
 | `codecs/__init__.py` | Re-exports from xml_codec and json_codec. | -- |
 | `codecs/xml_codec.py` | `render_rubric_xml(bundle) -> str` renders the full `<LLM_JUDGE_SPEC>` XML document. `render_criterion_xml(criterion, bundle) -> str` renders a focused single-criterion document. `render_group_xml(criteria, bundle) -> str` renders a subset document for grouped execution (filtered criteria, relevant disqualifiers, subset-specific output schema). Uses `xml.etree.ElementTree` for DOM construction (no string concatenation). Criterion attributes come from the binding's XML SurfaceProjection, not raw criterion fields. | `render_rubric_xml`, `render_criterion_xml`, `render_group_xml` |
-| `codecs/json_codec.py` | `parse_judgment_json(raw) -> dict` uses `harn_ai`'s repair-capable parser. `build_judgment_model(bundle) -> type` creates a dynamic Pydantic model (cached via `@lru_cache(maxsize=32)` keyed by criterion specs tuple). `build_judgment_tool(bundle) -> Tool` wraps the model as a `submit_judgment` tool. `validate_judgment_output(parsed, bundle) -> (model_instance or None, warnings)`. `generate_judgment_schema()` and `generate_judgment_template()` for schema/template generation. `ParseError` is the custom exception. | `parse_judgment_json`, `build_judgment_model`, `build_judgment_tool`, `validate_judgment_output`, `ParseError` |
+| `codecs/json_codec.py` | `parse_judgment_json(raw) -> dict` uses `harn_ai`'s repair-capable parser. `build_judgment_model(bundle, criteria=None) -> type` creates a dynamic Pydantic model (cached via `@lru_cache(maxsize=32)` keyed by criterion specs tuple); if `criteria` is provided, builds for that subset only. `build_judgment_tool(bundle, criteria=None) -> Tool` wraps the model as a `submit_judgment` tool. `validate_judgment_output(parsed, bundle) -> (model_instance or None, warnings)`. `generate_judgment_schema()` and `generate_judgment_template(bundle, criteria=None)` for schema/template generation. `ParseError` is the custom exception. | `parse_judgment_json`, `build_judgment_model`, `build_judgment_tool`, `validate_judgment_output`, `generate_judgment_schema`, `generate_judgment_template`, `ParseError` |
 
 ### engine/ -- Judge Execution
 
@@ -129,9 +129,9 @@ Each variant has `kind: Literal["prefix_suffix"]` (or `"word_count"`, `"char_lim
 
 Never call LLM APIs directly. All calls go through `harn_ai.stream.complete_simple()`. The evolution module's `make_harn_lm()` wraps this for GEPA's synchronous protocol.
 
-### Criterion-by-Criterion Judge Loop
+### Strategy-Based Judge Loop
 
-The judge loop (`run_judge_loop`) is NOT an agent loop iterating on tool calls. It iterates over **criteria**. Each criterion gets its own LLM call via `execute_criterion()`. There is no multi-turn tool-call/tool-result cycle.
+The judge loop (`run_judge_loop`) is NOT an agent loop iterating on tool calls. It iterates over **criteria** (or groups of criteria). Depending on the `execution_strategy`, criteria are partitioned into call units: one criterion per call (via `execute_criterion()`), one group per call (via `execute_group()`), or all criteria in one call (via `execute_group()`). There is no multi-turn tool-call/tool-result cycle.
 
 ### Tool-Based Structured Output vs Text Fallback
 
@@ -420,3 +420,4 @@ When `execute_group()` handles a multi-criterion call unit, the LLM returns one 
 | `pydantic >= 2.10` | Data validation and serialization. All IR types, judgment types, and dynamic models use Pydantic v2. `create_model()` is used for dynamic judgment output models. |
 | `defusedxml >= 0.7` | Safe XML parsing (prevents XXE and billion-laughs attacks). Imported as `defusedxml.ElementTree` for any XML parsing. Standard `xml.etree.ElementTree` is used only for XML construction (which is always safe). |
 | `gepa >= 0.1.0` (optional) | GEPA (Generalized Evolutionary Prompt Adaptation). Provides the optimization loop, adapter protocol, proposers, candidate selectors, batch samplers, stopping criteria, acceptance criteria, and result types. Only needed for `rubrify[evolve]`. |
+| `python-dotenv >= 1.0` (optional) | Loads environment variables from `.env` files. Used in example scripts (e.g. `red_team_judge.py`) for API key discovery. Install with `pip install rubrify[dev]`. |

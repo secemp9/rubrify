@@ -50,7 +50,7 @@ Each provider has a standard env var:
 
 **Option 1: `.env` file** (recommended)
 
-Create a `.env` file in your project root:
+Copy the included `.env.example` to `.env` and fill in your keys:
 
 ```
 DEEPSEEK_API_KEY=sk-your-key-here
@@ -191,6 +191,7 @@ The union type `Scale` is: `Annotated[BinaryScale | OrdinalScale | NominalScale 
 - `enforce_key_order` -- whether to enforce JSON key ordering
 - `criterion_focus` -- `"full"` (send entire rubric per criterion) or `"focused"` (send only the relevant criterion)
 - `decision_thresholds` -- list of `(min_score, label)` tuples for custom decision labels
+- `execution_strategy` -- `"per_criterion"` (default), `"grouped"`, or `"holistic"` (see [Execution Strategies](#execution-strategies))
 
 **ConstraintBinding** is the triple-layer alignment connecting a semantic criterion to its surface-layer projection (XML tag, JSON path) and output field. Each binding carries:
 
@@ -281,17 +282,21 @@ judgment = await judge.evaluate(
 
 ### The Judge Loop
 
-`run_judge_loop()` is the core algorithm. It does not iterate on tool calls like an agent loop; it iterates over **criteria**. Each criterion is a separate LLM call. Steps:
+`run_judge_loop()` is the core algorithm. It does not iterate on tool calls like an agent loop; it iterates over **criteria** (or groups of criteria, depending on the execution strategy). Steps:
 
 1. Verify bundle is locked.
 2. Resolve active criteria (genre filtering: criteria with `genre=None` are always active; others activate only when `active_genre` matches).
-3. For each criterion, call `execute_criterion()` -- one LLM call per criterion.
-4. Check disqualifiers (pattern-based and criterion-linked).
-5. Run mechanical pattern checks (`PatternEntry` patterns against the response).
-6. Verify evidence quotes exist in the response text (exact containment, then normalized containment).
-7. Verify output constraints against LLM output.
-8. Aggregate scores (weighted mean, or grouped aggregation if groups exist).
-9. Compute decision label from thresholds (defaults: >=90 "Publish-ready", >=75 "Strong draft", >=60 "Workable draft", >=40 "Needs major revision", <40 "Fundamentally unclear"). Disqualifier violations produce "Rejected".
+3. Partition active criteria into **call units** based on `execution_strategy` from the bundle's `SurfacePolicy`:
+   - `"per_criterion"` (default): one call unit per criterion.
+   - `"grouped"`: one call unit per `CriterionGroup`; ungrouped criteria individually.
+   - `"holistic"`: one call unit containing all active criteria.
+4. Execute each call unit: single-criterion call units use `execute_criterion()`, multi-criterion call units use `execute_group()`.
+5. Check disqualifiers (pattern-based and criterion-linked).
+6. Run mechanical pattern checks (`PatternEntry` patterns against the response).
+7. Verify evidence quotes exist in the response text (exact containment, then normalized containment).
+8. Verify output constraints against LLM output (respecting scope: `call`, `criterion`, or `judgment`).
+9. Aggregate scores (weighted mean, or grouped aggregation if groups exist).
+10. Compute decision label from thresholds (defaults: >=90 "Publish-ready", >=75 "Strong draft", >=60 "Workable draft", >=40 "Needs major revision", <40 "Fundamentally unclear"). Disqualifier violations produce "Rejected".
 
 Execution supports `parallel=True` for concurrent call-unit evaluation via `asyncio.gather`.
 
@@ -353,17 +358,19 @@ The XML document includes: mission, role, rubric (criteria with anchors and evid
 
 `render_criterion_xml(criterion, bundle) -> str` renders a focused document for a single criterion, used when `criterion_focus == "focused"`.
 
+`render_group_xml(criteria, bundle) -> str` renders a subset document for a group of criteria, used by the `"grouped"` and `"holistic"` execution strategies. Includes only the specified criteria, relevant disqualifiers, and a subset-specific output schema.
+
 ### JSON Codec
 
 `parse_judgment_json(raw) -> dict` parses LLM output using `harn_ai`'s `parse_json_with_repair`. Raises `ParseError` on failure.
 
-`build_judgment_model(bundle) -> type` constructs a dynamic Pydantic model for the rubric's expected output structure. Cached per criterion specs (LRU cache, max 32 entries). The model has fields: `score`, `rationale`, `evidence`, `violations`, `criterion_scores` (a nested model with one field per criterion, typed by scale kind), `confidence`.
+`build_judgment_model(bundle, criteria=None) -> type` constructs a dynamic Pydantic model for the rubric's expected output structure. Cached per criterion specs (LRU cache, max 32 entries). The model has fields: `score`, `rationale`, `evidence`, `violations`, `criterion_scores` (a nested model with one field per criterion, typed by scale kind), `confidence`. If `criteria` is provided, the model is built for only that subset (used by grouped/holistic execution strategies).
 
-`build_judgment_tool(bundle) -> Tool` wraps the dynamic model as a `harn_ai` `Tool` named `submit_judgment` for structured output via provider tool-calling.
+`build_judgment_tool(bundle, criteria=None) -> Tool` wraps the dynamic model as a `harn_ai` `Tool` named `submit_judgment` for structured output via provider tool-calling. If `criteria` is provided, the tool schema covers only that subset.
 
 `validate_judgment_output(parsed, bundle) -> (model_instance | None, warnings)` validates parsed JSON against the dynamic model.
 
-`generate_judgment_schema(bundle)` and `generate_judgment_template(bundle)` produce the JSON Schema and a zero-valued JSON template respectively.
+`generate_judgment_schema(bundle)` and `generate_judgment_template(bundle, criteria=None)` produce the JSON Schema and a zero-valued JSON template respectively.
 
 ---
 
@@ -480,37 +487,54 @@ All four artifact types are packed into a single GEPA candidate dict with namesp
 
 ## Examples
 
-The `examples/` directory contains:
+The `examples/` directory contains four rubric definitions, a re-export facade, and a demo runner. Each rubric module exports a function that returns a `CompilationResult`.
 
-### `examples/red_team_judge.py`
+### `examples/compliance_judge.py`
 
-A full working example porting a ComplianceJudge rubric to rubrify. Defines a 3-criterion rubric (Directness, Refusal/Deflection, Task Fidelity) with disqualifiers, pattern library, role spec, output constraints, and custom decision thresholds. Runs 4 calibration cases.
+ComplianceJudge: evaluates whether an assistant complied with a user's request without refusing, deflecting, or adding safety notices. 3 criteria (Directness 0-2, Refusal/Deflection 0-2, Task Fidelity 0-2), 2 disqualifiers, 14-pattern regex library, strict compliance-judge role, BECAUSE: output constraint, holistic execution strategy, and custom decision thresholds (Yes / Somewhat / No).
 
 ```bash
-uv run python examples/red_team_judge.py
+uv run python examples/compliance_judge.py
+```
+
+### `examples/anti_slop_judge.py`
+
+AntiLLMY: scores a passage for LLM-generated language patterns ("slop"). 5 criteria (Neutrality/Tone, Formulaic Scaffolding, Meta-Communication, Markup Artifacts, Watermarks -- each 0-3), 3 disqualifiers (AI self-disclosure, watermark tokens, placeholder text), extensive pattern library, inverted risk scoring (risk = 15 - score), holistic execution strategy, advice rules, and custom risk-band decision thresholds.
+
+```bash
+uv run python examples/anti_slop_judge.py
+```
+
+### `examples/zinsser_judge.py`
+
+ZinsserJudge XXL: evaluates English nonfiction craft quality grounded in Zinsser's principles. 12 core criteria (C1-C12, 0-5), 10 genre-conditional modules (0-3), 3 attitude lenses (0-2), 5 disqualifiers, 11 patterns, 3 groups (core/genre/attitude), grouped execution strategy, BECAUSE: + 35-word output constraints, and tiered decision thresholds. Accepts an optional `genre` parameter.
+
+```bash
+uv run python examples/zinsser_judge.py
+```
+
+### `examples/completeness_judge.py`
+
+CompletenessJudge: evaluates response completeness -- content coverage, no truncation, structural integrity. 5 criteria (Content Completeness 0-3, No Truncation binary, Structural Integrity 0-2, Step Coverage 0-3, Format Compliance 0-2), 2 disqualifiers, 11 patterns, definitions, calibration examples, completeness-auditor role, BECAUSE: + no-apology output constraints, holistic execution strategy, and custom decision thresholds (Complete / Partial / Incomplete).
+
+```bash
+uv run python examples/completeness_judge.py
 ```
 
 ### `examples/rubric_library.py`
 
-A library of four complete rubrics as rubrify IR objects:
-
-- **ComplianceJudge** -- 3 criteria, 2 disqualifiers, 14 patterns, custom Yes/Somewhat/No thresholds
-- **ZinsserJudge XXL** -- 12 core criteria (C1-C12), 10 genre modules, 3 attitude lenses, 5 disqualifiers, 11 patterns, 3 groups (core/genre/attitude), BECAUSE: + 35-word output constraints
-- **AntiLLMY** -- 5 criteria for detecting LLM-generated text ("slop"), 3 disqualifiers, extensive pattern library, inverted risk scoring
-- **CompletenessJudge** -- 5 criteria (Content Completeness, No Truncation, Structural Integrity, Step Coverage, Format Compliance), 2 disqualifiers, 11 patterns, holistic execution strategy, Complete/Partial/Incomplete thresholds
-
-Run to compile all rubrics and print summaries:
+Re-export facade for all four rubrics. Imports and re-exports `compliance_judge`, `zinsser_judge`, `anti_slop_judge`, and `completeness_judge` so existing imports continue to work. Run to compile all rubrics and print summaries:
 
 ```bash
 uv run python examples/rubric_library.py
 ```
 
-### `examples/completeness_judge.py`
+### `examples/red_team_judge.py`
 
-Ported from completeness_rubric.md. Evaluates response completeness -- content coverage, no truncation, structural integrity. Defines a 5-criterion rubric (Content Completeness 0-3, No Truncation binary, Structural Integrity 0-2, Step Coverage 0-3, Format Compliance 0-2) with 2 disqualifiers, 11 patterns, definitions, calibration examples, completeness-auditor role, BECAUSE: output constraint, and holistic execution strategy. Custom decision thresholds: Complete / Partial / Incomplete.
+Demo runner for the ComplianceJudge rubric. Imports the rubric from `compliance_judge.py` and runs it against 4 calibration cases (meta prefix + tactics, clean tactics, explicit refusal + deflection, total refusal) using rubrify's Judge class. Demonstrates dotenv loading for API keys. Contains no rubric definition of its own.
 
 ```bash
-uv run python examples/completeness_judge.py
+uv run python examples/red_team_judge.py
 ```
 
 ---
@@ -557,7 +581,7 @@ src/rubrify/
     passes.py              -- bind(), audit_coverage(), audit_projection_completeness(), audit_scale_consistency(), audit_output_constraints()
 
   codecs/                  -- Surface format rendering and parsing
-    xml_codec.py           -- render_rubric_xml(), render_criterion_xml()
+    xml_codec.py           -- render_rubric_xml(), render_criterion_xml(), render_group_xml()
     json_codec.py          -- parse_judgment_json(), build_judgment_model(), build_judgment_tool(), validate_judgment_output()
 
   engine/                  -- Judge execution
@@ -584,9 +608,12 @@ src/rubrify/
     test_fixtures.py       -- make_compliance_rubric(), make_annotated_dataset() for testing
 
 examples/
-  red_team_judge.py        -- ComplianceJudge example with calibration cases
-  completeness_judge.py    -- CompletenessJudge: response completeness evaluation (content coverage, no truncation, structural integrity)
-  rubric_library.py        -- Four complete rubrics (ComplianceJudge, ZinsserJudge, AntiLLMY, CompletenessJudge)
+  compliance_judge.py      -- ComplianceJudge rubric definition (3 criteria, 2 DQs, 14 patterns)
+  anti_slop_judge.py       -- AntiLLMY rubric definition (5 criteria, 3 DQs, extensive pattern library)
+  zinsser_judge.py         -- ZinsserJudge XXL rubric definition (25 criteria, 3 groups, genre-conditional)
+  completeness_judge.py    -- CompletenessJudge rubric definition (5 criteria, 2 DQs, 11 patterns)
+  rubric_library.py        -- Re-export facade for all four rubrics
+  red_team_judge.py        -- Demo runner: ComplianceJudge with 4 calibration cases
 
 tests/
   test_rubrify.py          -- 67 tests covering IR, compiler, codecs, and faux-provider integration
