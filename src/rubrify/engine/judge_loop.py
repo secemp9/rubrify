@@ -1,6 +1,6 @@
 """Judge loop: criterion-by-criterion execution over a locked bundle.
 
-Unlike harnify_agent's agent_loop which iterates on tool calls,
+Unlike harn_agent's agent_loop which iterates on tool calls,
 the judge_loop iterates over CRITERIA. Each criterion is a separate
 LLM call. There is no tool-call/tool-result cycle.
 
@@ -21,7 +21,7 @@ import asyncio
 import time
 from collections.abc import Callable
 
-from harnify_ai.types import Model
+from harn_ai.types import Model
 
 from rubrify.ir.bundle import RubricBundle
 from rubrify.ir.constraints import ConstraintBinding, RitualConstraint

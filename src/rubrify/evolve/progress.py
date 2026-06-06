@@ -10,7 +10,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 
-# ANSI color codes — same pattern as harnify's theme.py
+# ANSI color codes — same pattern as harn's theme.py
 _RESET = "\x1b[0m"
 _BOLD = "\x1b[1m"
 _DIM = "\x1b[2m"

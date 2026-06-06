@@ -1,7 +1,7 @@
 """CriterionExecutor: the single LLM call per criterion.
 
 Two execution strategies:
-  1. Tool-based: Define judgment output as a harnify Tool. The provider
+  1. Tool-based: Define judgment output as a harn Tool. The provider
      forces structured JSON via tool-calling. No text parsing needed.
   2. Text-based: Send text prompt, parse JSON from response text.
      Used when provider does not support tool-calling.
@@ -19,8 +19,8 @@ import defusedxml.ElementTree as SafeET  # noqa: F401
 
 from pydantic import BaseModel
 
-from harnify_ai.stream import complete_simple
-from harnify_ai.types import (
+from harn_ai.stream import complete_simple
+from harn_ai.types import (
     Context,
     Model,
     SimpleStreamOptions,
@@ -56,7 +56,7 @@ async def execute_criterion(
 ) -> CriterionJudgment:
     """Execute a single criterion judgment via one LLM call.
 
-    When use_tool=True (default), uses harnify's Tool system to force
+    When use_tool=True (default), uses harn's Tool system to force
     structured output via the provider's native tool-calling mechanism.
     Falls back to text-based extraction if the response has no tool call.
     """

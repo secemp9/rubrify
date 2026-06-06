@@ -1,7 +1,7 @@
 """Core IR type system for rubrify.
 
 Scale types are polymorphic and protocol-driven — each knows its own
-domain and scoring semantics. This mirrors harnify_ai/types.py in style:
+domain and scoring semantics. This mirrors harn_ai/types.py in style:
 SchemaModel with extra="forbid", discriminated unions.
 
 The type hierarchy:
@@ -24,7 +24,7 @@ from typing import Annotated, Any, Literal, TypeAlias
 
 from pydantic import Field, field_validator, model_validator
 
-from harnify_ai.types import SchemaModel
+from harn_ai.types import SchemaModel
 
 
 # ── Scale types ────────────────────────────────────────────────────

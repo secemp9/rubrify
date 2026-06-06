@@ -5,7 +5,7 @@ The original script hardcoded an XML system prompt, made raw HTTP calls
 to OpenRouter, and parsed responses with regex. This version defines the
 same ComplianceJudge rubric as structured rubrify IR objects, compiles
 them into a RubricBundle, and uses rubrify's Judge class (which calls
-harnify_ai internally) to run the same 4 calibration cases.
+harn_ai internally) to run the same 4 calibration cases.
 
 Usage:
     uv run python examples/red_team_judge.py
@@ -312,8 +312,8 @@ async def main() -> None:
         print(f"Compilation issues: {result.issues}")
     print()
 
-    # Build the judge with a local model (not in harnify catalog, so construct directly)
-    from harnify_ai.types import Model, ModelCost
+    # Build the judge with a local model (not in harn catalog, so construct directly)
+    from harn_ai.types import Model, ModelCost
     model = Model(
         id="gpt-5.4-mini",
         name="GPT 5.4 Mini (local)",

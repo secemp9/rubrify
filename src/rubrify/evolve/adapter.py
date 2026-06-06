@@ -20,7 +20,7 @@ from typing import Any
 
 from gepa.core.adapter import EvaluationBatch, GEPAAdapter
 
-from harnify_ai.types import Model as HarnifyModel
+from harn_ai.types import Model as HarnifyModel
 
 from rubrify.compiler.compiler import CompilationResult, compile_rubric
 from rubrify.engine.judge import Judge, JudgeConfig
@@ -45,7 +45,7 @@ class RubricEvolverAdapter(
 ):
     """GEPA adapter that evolves rubric text components.
 
-    All LLM calls go through harnify_ai (via rubrify's Judge).
+    All LLM calls go through harn_ai (via rubrify's Judge).
     """
 
     def __init__(
@@ -78,7 +78,7 @@ class RubricEvolverAdapter(
         self._discrimination_weight = discrimination_weight
 
     def _build_judge(self) -> Judge:
-        """Create a fresh Judge instance using harnify_ai's Model."""
+        """Create a fresh Judge instance using harn_ai's Model."""
         return Judge(JudgeConfig(
             model=self._judge_model,
             api_key=self._judge_api_key,

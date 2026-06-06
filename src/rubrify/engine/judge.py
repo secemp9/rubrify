@@ -1,6 +1,6 @@
 """Judge: stateful public API for rubric-based evaluation.
 
-The Judge accepts a harnify_ai Model directly — any model harnify can
+The Judge accepts a harn_ai Model directly — any model harn can
 talk to, rubrify can judge with. No wrapper, no abstraction layer.
 """
 
@@ -9,8 +9,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from harnify_ai.env_api_keys import get_env_api_key
-from harnify_ai.types import Model
+from harn_ai.env_api_keys import get_env_api_key
+from harn_ai.types import Model
 
 from rubrify.ir.bundle import RubricBundle
 from rubrify.engine.judgment import CriterionJudgment, Judgment, JudgeUsage
@@ -21,11 +21,11 @@ from rubrify.engine.judge_loop import run_judge_loop
 class JudgeConfig:
     """Configuration for a Judge instance.
 
-    model: A harnify_ai Model — same object you'd pass to complete_simple().
-           Works with any provider harnify supports (OpenAI, Anthropic,
+    model: A harn_ai Model — same object you'd pass to complete_simple().
+           Works with any provider harn supports (OpenAI, Anthropic,
            DeepSeek, local proxies, etc.)
     api_key: Optional. If None, auto-discovered from environment via
-             harnify's get_env_api_key(model.provider).
+             harn's get_env_api_key(model.provider).
     """
     model: Model
     api_key: str | None = None

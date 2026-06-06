@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 
-from harnify_ai.types import Model
+from harn_ai.types import Model
 
 from rubrify.compiler.compiler import compile_rubric
 from rubrify.engine.judge import Judge, JudgeConfig

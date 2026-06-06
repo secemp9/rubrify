@@ -21,7 +21,7 @@ from gepa.strategies.candidate_selector import ParetoCandidateSelector
 from gepa.strategies.component_selector import RoundRobinReflectionComponentSelector
 from gepa.utils import MaxMetricCallsStopper
 
-from harnify_ai.types import Model as HarnifyModel
+from harn_ai.types import Model as HarnifyModel
 
 from rubrify.ir.constraints import RitualConstraint
 from rubrify.ir.roles import RoleSpec, SurfacePolicy
@@ -29,7 +29,7 @@ from rubrify.ir.types import Rubric
 
 from rubrify.evolve.adapter import RubricEvolverAdapter
 from rubrify.evolve.candidate import candidate_to_rubric, rubric_to_candidate
-from rubrify.evolve.lm_bridge import make_harnify_lm
+from rubrify.evolve.lm_bridge import make_harn_lm
 from rubrify.evolve.types import AnnotatedExample
 
 
@@ -172,7 +172,7 @@ def evolve_rubric(
 
     Example::
 
-        from harnify_ai.models import get_model
+        from harn_ai.models import get_model
         from rubrify.evolve import evolve_rubric, RubricEvolutionConfig
 
         result = evolve_rubric(
@@ -195,8 +195,8 @@ def evolve_rubric(
             text components and weights are evolvable.
         annotated_dataset: Human-annotated (response, scores) pairs. Each
             AnnotatedExample must have human_scores keyed by criterion ID.
-        judge_model: harnify_ai Model for rubrify's Judge (evaluates responses).
-        reflection_model: harnify_ai Model for GEPA's reflection LM (proposes
+        judge_model: harn_ai Model for rubrify's Judge (evaluates responses).
+        reflection_model: harn_ai Model for GEPA's reflection LM (proposes
             rubric improvements). Can be the same model or a stronger one.
         role: Optional RoleSpec for the judge persona.
         policy: Optional SurfacePolicy for rendering.
@@ -254,8 +254,8 @@ def evolve_rubric(
     else:
         reflection_template = RUBRIC_EVOLUTION_REFLECTION_TEMPLATE
 
-    # Build the reflection LM using harnify
-    reflection_lm = make_harnify_lm(
+    # Build the reflection LM using harn
+    reflection_lm = make_harn_lm(
         reflection_model,
         api_key=reflection_api_key,
         temperature=config.reflection_temperature,
@@ -523,8 +523,8 @@ def evolve_rubric_v3(
     Args:
         seed_rubric: The initial rubric to evolve.
         annotated_dataset: Human-annotated (response, scores) pairs.
-        judge_model: harnify_ai Model for rubrify's Judge.
-        reflection_model: harnify_ai Model for GEPA's reflection LM.
+        judge_model: harn_ai Model for rubrify's Judge.
+        reflection_model: harn_ai Model for GEPA's reflection LM.
         role: Optional RoleSpec for the judge persona.
         policy: Optional SurfacePolicy for rendering.
         rituals: Optional ritual constraints.
@@ -620,7 +620,7 @@ def evolve_rubric_v3(
             co_reflection_templates[key] = _META_REFLECTION_TEMPLATE
 
     # 7. Build reflection LM
-    reflection_lm = make_harnify_lm(
+    reflection_lm = make_harn_lm(
         reflection_model,
         api_key=reflection_api_key,
         temperature=config.reflection_temperature,

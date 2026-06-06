@@ -17,7 +17,7 @@ from typing import Any
 
 from gepa.core.adapter import EvaluationBatch, GEPAAdapter
 
-from harnify_ai.types import Model as HarnifyModel
+from harn_ai.types import Model as HarnifyModel
 
 from rubrify.engine.judgment import Judgment
 from rubrify.ir.constraints import RitualConstraint

@@ -3,8 +3,8 @@ name = "rubrify"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "harnify-ai",
-    "harnify-agent",
+    "harn-ai",
+    "harn-agent",
     "pydantic>=2.10",
     "defusedxml>=0.7",
 ]
@@ -13,8 +13,8 @@ dependencies = [
 evolve = ["gepa>=0.1.0"]
 
 [tool.uv.sources]
-harnify-ai = { workspace = true }
-harnify-agent = { workspace = true }
+harn-ai = { workspace = true }
+harn-agent = { workspace = true }
 gepa = { path = "../../../gepa", editable = true }
 
 [build-system]

@@ -13,8 +13,8 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError, create_model, Field as PydanticField
 
-from harnify_ai.types import Tool
-from harnify_ai.utils.json_parse import parse_json_with_repair
+from harn_ai.types import Tool
+from harn_ai.utils.json_parse import parse_json_with_repair
 
 
 class ParseError(Exception):
@@ -26,7 +26,7 @@ class ParseError(Exception):
 
 
 def parse_judgment_json(raw: str) -> dict[str, Any]:
-    """Parse LLM output as JSON using harnify's repair-capable parser.
+    """Parse LLM output as JSON using harn's repair-capable parser.
 
     Raises ParseError on failure. No fallbacks.
     """
@@ -108,7 +108,7 @@ def build_judgment_model(bundle: "RubricBundle") -> type:
 # ── Tool construction for structured output ──────────────────────
 
 def build_judgment_tool(bundle: "RubricBundle") -> Tool:
-    """Build a harnify Tool that forces structured judgment output.
+    """Build a harn Tool that forces structured judgment output.
 
     When passed to Context(tools=[...]), providers like OpenAI and Anthropic
     force the LLM to produce valid JSON matching the schema via tool-calling.

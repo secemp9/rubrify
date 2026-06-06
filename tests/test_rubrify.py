@@ -1,5 +1,5 @@
 """Comprehensive test suite for rubrify — IR types, compiler, codecs, and
-end-to-end integration via harnify's faux provider.
+end-to-end integration via harn's faux provider.
 
 Every test is deterministic: no real LLM calls, no network, no randomness.
 """
@@ -426,13 +426,13 @@ class TestIntegration:
 
     @pytest.fixture
     def faux(self):
-        from harnify_ai.providers.faux import register_faux_provider
+        from harn_ai.providers.faux import register_faux_provider
         reg = register_faux_provider()
         yield reg
         reg.unregister()
 
     async def test_full_pipeline_with_tool_call(self, faux):
-        from harnify_ai.providers.faux import faux_assistant_message, faux_tool_call
+        from harn_ai.providers.faux import faux_assistant_message, faux_tool_call
 
         rubric = _make_simple_rubric()
         result = compile_rubric(rubric)
@@ -472,7 +472,7 @@ class TestIntegration:
         assert judgment.decision is not None
 
     async def test_text_fallback_when_no_tool_call(self, faux):
-        from harnify_ai.providers.faux import faux_assistant_message, faux_text
+        from harn_ai.providers.faux import faux_assistant_message, faux_text
 
         rubric = _make_simple_rubric(criteria=[_simple_criterion("C1")])
         result = compile_rubric(rubric)
@@ -492,7 +492,7 @@ class TestIntegration:
         assert cj.unit_score > 0
 
     async def test_judge_tracks_usage(self, faux):
-        from harnify_ai.providers.faux import faux_assistant_message, faux_tool_call
+        from harn_ai.providers.faux import faux_assistant_message, faux_tool_call
 
         rubric = _make_simple_rubric(criteria=[_simple_criterion("C1")])
         result = compile_rubric(rubric)
@@ -518,7 +518,7 @@ class TestIntegration:
         assert judge.total_usage.api_calls >= 1
 
     async def test_disqualifier_zeros_score(self, faux):
-        from harnify_ai.providers.faux import faux_assistant_message, faux_tool_call
+        from harn_ai.providers.faux import faux_assistant_message, faux_tool_call
 
         rubric = _make_simple_rubric(
             criteria=[_simple_criterion("C1")],
@@ -549,7 +549,7 @@ class TestIntegration:
         assert judgment.decision == "Rejected"
 
     async def test_binary_scale_integration(self, faux):
-        from harnify_ai.providers.faux import faux_assistant_message, faux_tool_call
+        from harn_ai.providers.faux import faux_assistant_message, faux_tool_call
 
         rubric = _make_simple_rubric(
             criteria=[Criterion(
@@ -581,7 +581,7 @@ class TestIntegration:
         assert cj.unit_score == 1.0
 
     async def test_multiple_evaluations_accumulate_usage(self, faux):
-        from harnify_ai.providers.faux import faux_assistant_message, faux_tool_call
+        from harn_ai.providers.faux import faux_assistant_message, faux_tool_call
 
         rubric = _make_simple_rubric(criteria=[_simple_criterion("C1")])
         result = compile_rubric(rubric)

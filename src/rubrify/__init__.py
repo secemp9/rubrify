@@ -1,12 +1,12 @@
 """rubrify — rubric compiler and judge engine for LLM evaluation.
 
-Built on harnify_ai for multi-provider LLM access. Works with any model
-harnify supports: OpenAI, Anthropic, DeepSeek, Google, local proxies, etc.
+Built on harn_ai for multi-provider LLM access. Works with any model
+harn supports: OpenAI, Anthropic, DeepSeek, Google, local proxies, etc.
 API keys are auto-discovered from environment variables.
 
 Quick start (hosted provider):
 
-    from harnify_ai.models import get_model
+    from harn_ai.models import get_model
     from rubrify import compile_rubric, Judge, JudgeConfig
 
     result = compile_rubric(rubric)
@@ -15,7 +15,7 @@ Quick start (hosted provider):
 
 With a custom OpenAI-compatible proxy (e.g., local vLLM, llama.cpp, LiteLLM):
 
-    from harnify_ai.models import get_model
+    from harn_ai.models import get_model
 
     model = get_model("openai", "gpt-4o").model_copy(update={
         "baseUrl": "http://localhost:8000/v1",
