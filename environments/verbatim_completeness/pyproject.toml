@@ -1,0 +1,19 @@
+[project]
+name = "verbatim_completeness"
+version = "0.1.0"
+description = "Train models to reproduce text faithfully without truncation, additions, or modification"
+tags = ["single-turn", "completeness", "deterministic", "anti-laziness"]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "verifiers>=0.1.15.dev17",
+    "rapidfuzz>=3.0",
+    "rubrify",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = ["verbatim_completeness/"]
