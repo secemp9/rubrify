@@ -12,9 +12,9 @@ there a design bug causing it to zero all scores?
 import asyncio
 import json
 import sys
-import os
+from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from harn_ai.models import get_model
 
@@ -27,9 +27,6 @@ from rubrify.engine.judge_loop import (
 )
 
 # ── Configuration ──────────────────────────────────────────────────
-API_KEY = os.environ.get("DEEPSEEK_API_KEY")
-if not API_KEY:
-    raise SystemExit("Set DEEPSEEK_API_KEY environment variable")
 RESPONSE_TEXT = (
     "The bridge collapsed because the steel bolts corroded over twenty years "
     "of exposure to salt air."
@@ -67,7 +64,6 @@ async def main():
 
     judge = Judge(JudgeConfig(
         model=model,
-        api_key=API_KEY,
         temperature=0.0,
         max_tokens=2048,
         parallel=False,

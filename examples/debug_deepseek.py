@@ -9,12 +9,13 @@ fails to extract scores.
 
 import asyncio
 import json
-import sys
 import os
+import sys
 import time
+from pathlib import Path
 
 # Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from harn_ai.models import get_model
 from harn_ai.stream import complete_simple
@@ -34,9 +35,6 @@ from rubrify.codecs.json_codec import (
 from rubrify.codecs.xml_codec import render_rubric_xml
 
 # ── Configuration ──────────────────────────────────────────────────
-API_KEY = os.environ.get("DEEPSEEK_API_KEY")
-if not API_KEY:
-    raise SystemExit("Set DEEPSEEK_API_KEY environment variable")
 RESPONSE_TEXT = (
     "The bridge collapsed because the steel bolts corroded over twenty years "
     "of exposure to salt air. Three engineers inspected the site. They found "
@@ -127,7 +125,7 @@ async def main():
     )
 
     opts = SimpleStreamOptions(
-        apiKey=API_KEY,
+        apiKey=os.environ.get("DEEPSEEK_API_KEY"),
         temperature=0.0,
         maxTokens=2048,
     )

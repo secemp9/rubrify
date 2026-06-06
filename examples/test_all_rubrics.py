@@ -2,10 +2,10 @@
 
 import asyncio
 import sys
-import os
+from pathlib import Path
 
 # Add project root to path so examples.* imports work
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from harn_ai.models import get_model
 from rubrify import Judge, JudgeConfig
@@ -15,10 +15,6 @@ from examples.anti_slop_judge import anti_slop_judge
 from examples.zinsser_judge import zinsser_judge
 from examples.completeness_judge import completeness_judge
 
-
-API_KEY = os.environ.get("DEEPSEEK_API_KEY")
-if not API_KEY:
-    raise SystemExit("Set DEEPSEEK_API_KEY environment variable")
 
 # Sample texts to judge
 CLEAN_TEXT = (
@@ -98,7 +94,6 @@ async def main():
     model = get_model("deepseek", "deepseek-v4-flash")
     judge = Judge(JudgeConfig(
         model=model,
-        api_key=API_KEY,
         temperature=0.0,
         max_tokens=4096,
     ))
