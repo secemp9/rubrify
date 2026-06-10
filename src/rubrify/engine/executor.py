@@ -42,6 +42,36 @@ from rubrify.codecs.json_codec import (
 from rubrify.engine.judgment import CriterionJudgment, EvidenceQuote, JudgeUsage
 
 
+class LLMApiError(RuntimeError):
+    """Raised when the LLM API returns an error instead of a valid response.
+
+    Attributes:
+        provider: The API provider name (e.g. "deepseek", "openai").
+        error_message: The raw error message from the provider.
+        context_label: What was being evaluated when the error occurred.
+    """
+
+    def __init__(self, provider: str, error_message: str, context_label: str) -> None:
+        self.provider = provider
+        self.error_message = error_message
+        self.context_label = context_label
+        super().__init__(
+            f"LLM API error from '{provider}' during {context_label}: {error_message}"
+        )
+
+
+def _check_api_result(result, context_label: str) -> None:
+    """Raise LLMApiError if the LLM API returned an error instead of a response."""
+    if getattr(result, "stopReason", None) == "error":
+        error_msg = getattr(result, "errorMessage", None) or "Unknown API error"
+        provider = getattr(result, "provider", "unknown")
+        raise LLMApiError(
+            provider=provider,
+            error_message=error_msg,
+            context_label=context_label,
+        )
+
+
 async def execute_criterion(
     criterion: Criterion,
     bundle: RubricBundle,
@@ -86,6 +116,9 @@ async def execute_criterion(
     )
 
     result = await complete_simple(model, context, opts)
+
+    # Detect API errors before processing content
+    _check_api_result(result, f"criterion '{criterion.id}'")
 
     # Track usage
     if usage is not None:
@@ -305,6 +338,10 @@ async def execute_group(
     # D) Make ONE call to complete_simple
     result = await complete_simple(model, context, opts)
 
+    # Detect API errors before processing content
+    criteria_ids = ", ".join(c.id for c in criteria)
+    _check_api_result(result, f"group [{criteria_ids}]")
+
     # Track usage
     usage.input_tokens += result.usage.input
     usage.output_tokens += result.usage.output
@@ -445,6 +482,7 @@ def _build_group_user_prompt(
 
 
 __all__ = [
+    "LLMApiError",
     "execute_criterion",
     "execute_group",
 ]
