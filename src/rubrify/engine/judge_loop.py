@@ -38,7 +38,7 @@ from rubrify.engine.judgment import (
     Judgment,
     JudgeUsage,
 )
-from rubrify.engine.executor import execute_criterion, execute_group
+from rubrify.engine.executor import LLMApiError, execute_criterion, execute_group
 
 
 async def run_judge_loop(
@@ -280,6 +280,8 @@ async def _execute_one_call_unit(
                 temperature=temperature, max_tokens=max_tokens, usage=local_usage,
                 use_tool=use_tool,
             )
+        except LLMApiError:
+            raise  # Infrastructure failure — propagate to caller
         except Exception as e:
             cj = CriterionJudgment(
                 criterion_id=criterion.id,
@@ -306,6 +308,8 @@ async def _execute_one_call_unit(
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
+        except LLMApiError:
+            raise  # Infrastructure failure — propagate to caller
         except Exception as e:
             group_judgments = [
                 CriterionJudgment(

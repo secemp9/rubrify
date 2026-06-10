@@ -33,6 +33,7 @@ from rubrify.engine.judgment import (  # noqa: F401
     Judgment,
     JudgeUsage,
 )
+from rubrify.engine.executor import LLMApiError  # noqa: F401
 from rubrify.engine.judge_loop import run_judge_loop  # noqa: F401
 from rubrify.ir.bundle import RubricBundle, lock_bundle  # noqa: F401
 from rubrify.ir.types import (  # noqa: F401
