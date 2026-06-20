@@ -1,6 +1,6 @@
 [project]
 name = "rubrify"
-version = "0.1.5"
+version = "0.1.6"
 description = "Rubric compiler and judge engine for LLM evaluation"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -14,10 +14,10 @@ dependencies = [
 evolve = ["gepa>=0.1.0"]
 dev = ["python-dotenv>=1.0", "pytest>=8.0", "pytest-asyncio>=0.23"]
 
-[tool.uv.sources]
-harn-ai = { workspace = true }
-harn-agent = { workspace = true }
-gepa = { path = "../../../gepa", editable = true }
+# [tool.uv.sources] -- stripped for standalone install
+# harn-ai = { workspace = true }
+# harn-agent = { workspace = true }
+# gepa = { path = "../../../gepa", editable = true }
 
 [build-system]
 requires = ["hatchling"]

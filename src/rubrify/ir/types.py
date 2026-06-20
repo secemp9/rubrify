@@ -168,6 +168,22 @@ class EvidenceSpec(SchemaModel):
     max_items: int = Field(default=8, gt=0)
 
 
+# ── Scope specification ────────────────────────────────────────────
+
+class ScopeSpec(SchemaModel):
+    """Explicit positive/negative boundary on a criterion's evaluation scope.
+
+    Structurally bound to a Criterion (as a field, not a dangling reference).
+    Rendered as ``<scope>`` children of ``<criterion>`` in XML — survives all
+    rendering modes including per_criterion focused evaluation.
+
+    ``in_scope`` lists observable behaviors that count toward this criterion.
+    ``out_of_scope`` lists observable behaviors that do NOT count.
+    """
+    in_scope: list[str] = Field(default_factory=list)
+    out_of_scope: list[str] = Field(default_factory=list)
+
+
 # ── Criterion ──────────────────────────────────────────────────────
 
 class Criterion(SchemaModel):
@@ -180,6 +196,7 @@ class Criterion(SchemaModel):
     evidence: EvidenceSpec = EvidenceSpec()
     genre: list[str] | None = None
     mechanical_rules: list[str] = []
+    scope: ScopeSpec | None = None
 
 
 class CriterionGroup(SchemaModel):
@@ -233,6 +250,24 @@ class CalibrationExample(SchemaModel):
     explanation: str = ""  # why this verdict is correct
 
 
+# ── Corpus profile ─────────────────────────────────────────────────
+
+class CorpusProfile(SchemaModel):
+    """Domain context that calibrates the judge's expectations.
+
+    Factual description of the evaluation domain — what entities in the
+    corpus typically DO and DO NOT do.  Rendered at root level in all XML
+    rendering modes so the judge always has domain context.
+
+    This is NOT a hypothesis.  It describes observable domain facts.
+    """
+    id: str
+    domain: str
+    typical_behaviors: list[str] = Field(default_factory=list)
+    atypical_behaviors: list[str] = Field(default_factory=list)
+    quality_axis: str = ""
+
+
 # ── Rubric ─────────────────────────────────────────────────────────
 
 class RubricMeta(SchemaModel):
@@ -266,6 +301,7 @@ class Rubric(SchemaModel):
     definitions: list[Definition] = []
     advice_rules: list[AdviceRule] = []
     calibration_examples: list[CalibrationExample] = []
+    corpus_profile: CorpusProfile | None = None
 
     @model_validator(mode="after")
     def _unique_criterion_ids(self) -> "Rubric":
@@ -303,6 +339,7 @@ __all__ = [
     "AdviceRule",
     "BinaryScale",
     "CalibrationExample",
+    "CorpusProfile",
     "Criterion",
     "CriterionGroup",
     "Definition",
@@ -317,4 +354,5 @@ __all__ = [
     "Scale",
     "ScaleAnchor",
     "SchemaModel",
+    "ScopeSpec",
 ]

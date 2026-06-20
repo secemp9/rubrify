@@ -18,9 +18,11 @@ from rubrify.ir.roles import SurfacePolicy
 from rubrify.ir.bundle import RubricBundle, lock_bundle
 from rubrify.compiler.passes import (
     audit_coverage,
+    audit_hypothesis_neutrality,
     audit_output_constraints,
     audit_projection_completeness,
     audit_scale_consistency,
+    audit_scope_completeness,
     bind,
 )
 
@@ -89,6 +91,8 @@ def compile_rubric(
     issues.extend(audit_projection_completeness(rubric, bindings, policy))
     issues.extend(audit_scale_consistency(rubric))
     issues.extend(audit_output_constraints(output_constraints, rubric, execution_strategy=policy.execution_strategy))
+    issues.extend(audit_scope_completeness(rubric))
+    issues.extend(audit_hypothesis_neutrality(rubric))
 
     return CompilationResult(bundle=bundle, issues=issues)
 

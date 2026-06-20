@@ -346,7 +346,7 @@ def evolve_rubric(
         logger=logger,
         experiment_tracker=experiment_tracker,
         stop_callback=MaxMetricCallsStopper(config.max_metric_calls),
-        acceptance_criterion=acceptance,
+        **({} if "acceptance_criterion" not in __import__("inspect").signature(GEPAEngine.__init__).parameters else {"acceptance_criterion": acceptance}),
     )
 
     with experiment_tracker:
@@ -369,7 +369,7 @@ def evolve_rubric(
         best_candidate=best_candidate,
         best_score=gepa_result.best_score if hasattr(gepa_result, 'best_score') else state.program_full_scores_val_set[gepa_result.best_idx] if gepa_result.best_idx < len(state.program_full_scores_val_set) else 0.0,
         total_iterations=len(state.program_candidates) - 1,
-        total_metric_calls=state.num_metric_calls if hasattr(state, 'num_metric_calls') else len(state.program_candidates),
+        total_metric_calls=getattr(state, 'total_num_evals', len(state.program_candidates)),
     )
 
 
@@ -712,7 +712,7 @@ def evolve_rubric_v3(
         logger=logger,
         experiment_tracker=experiment_tracker,
         stop_callback=MaxMetricCallsStopper(config.max_metric_calls),
-        acceptance_criterion=acceptance,
+        **({} if "acceptance_criterion" not in __import__("inspect").signature(GEPAEngine.__init__).parameters else {"acceptance_criterion": acceptance}),
     )
 
     # 10. Run the engine
@@ -756,11 +756,7 @@ def evolve_rubric_v3(
             )
         ),
         total_iterations=len(state.program_candidates) - 1,
-        total_metric_calls=(
-            state.num_metric_calls
-            if hasattr(state, 'num_metric_calls')
-            else len(state.program_candidates)
-        ),
+        total_metric_calls=getattr(state, 'total_num_evals', len(state.program_candidates)),
         evolved_gate_rubric=components.gate_rubric,
         evolved_reflection_templates=components.reflection_templates,
         evolved_acceptance_params=components.acceptance_params,

@@ -87,6 +87,9 @@ def render_rubric_xml(bundle: RubricBundle) -> str:
             def_el.set("term", defn.term)
             def_el.text = defn.description
 
+    # Corpus profile — domain context for the judge
+    _render_corpus_profile(root, rubric)
+
     # Calibration examples (few-shot)
     if rubric.calibration_examples:
         examples_el = ET.SubElement(root, "mapping_examples")
@@ -201,6 +204,9 @@ def render_criterion_xml(
             def_el.set("term", defn.term)
             def_el.text = defn.description
 
+    # Corpus profile — domain context survives focused mode
+    _render_corpus_profile(root, rubric)
+
     # Calibration examples (few-shot)
     if rubric.calibration_examples:
         examples_el = ET.SubElement(root, "mapping_examples")
@@ -307,6 +313,9 @@ def render_group_xml(criteria: list[Criterion], bundle: RubricBundle) -> str:
             def_el.set("id", defn.id)
             def_el.set("term", defn.term)
             def_el.text = defn.description
+
+    # Corpus profile — domain context for grouped evaluation
+    _render_corpus_profile(root, rubric)
 
     # Calibration examples (shared few-shot)
     if rubric.calibration_examples:
@@ -468,6 +477,14 @@ def _build_criterion_element(
         rule_el = ET.SubElement(crit_el, "rule")
         rule_el.text = rule
 
+    # Scope specification — interpretation boundary
+    if criterion.scope is not None:
+        scope_el = ET.SubElement(crit_el, "scope")
+        for item in criterion.scope.in_scope:
+            _add_text_child(scope_el, "in_scope", item)
+        for item in criterion.scope.out_of_scope:
+            _add_text_child(scope_el, "out_of_scope", item)
+
     return crit_el
 
 
@@ -487,6 +504,21 @@ def _render_json_template(bundle: RubricBundle) -> str:
     """
     from rubrify.codecs.json_codec import generate_judgment_template
     return generate_judgment_template(bundle)
+
+
+def _render_corpus_profile(parent: ET.Element, rubric) -> None:
+    """Render <corpus_profile> at root level if present."""
+    if rubric.corpus_profile is not None:
+        cp = rubric.corpus_profile
+        cp_el = ET.SubElement(parent, "corpus_profile")
+        cp_el.set("id", cp.id)
+        cp_el.set("domain", cp.domain)
+        for b in cp.typical_behaviors:
+            _add_text_child(cp_el, "typical", b)
+        for b in cp.atypical_behaviors:
+            _add_text_child(cp_el, "atypical", b)
+        if cp.quality_axis:
+            _add_text_child(cp_el, "quality_axis", cp.quality_axis)
 
 
 def _add_text_child(parent: ET.Element, tag: str, text: str) -> ET.Element:

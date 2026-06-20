@@ -143,10 +143,43 @@ def audit_output_constraints(
     return issues
 
 
+def audit_scope_completeness(rubric: Rubric) -> list[str]:
+    """Warn when a ScopeSpec has empty in_scope or out_of_scope."""
+    issues: list[str] = []
+    for c in rubric.criteria:
+        if c.scope is not None:
+            if not c.scope.in_scope:
+                issues.append(f"Criterion '{c.id}' has scope with empty in_scope")
+            if not c.scope.out_of_scope:
+                issues.append(f"Criterion '{c.id}' has scope with empty out_of_scope")
+    return issues
+
+
+def audit_hypothesis_neutrality(rubric: Rubric) -> list[str]:
+    """Warn when instructions contain comparative/hypothesis language."""
+    signals = [
+        "difference between", "captures the", "designed to show",
+        "should differentiate", "core quality difference",
+    ]
+    issues: list[str] = []
+    for instruction in rubric.instructions:
+        lower = instruction.lower()
+        for signal in signals:
+            if signal in lower:
+                issues.append(
+                    f"Instruction may embed hypothesis ('{signal}'): "
+                    f"'{instruction[:80]}...'"
+                )
+                break
+    return issues
+
+
 __all__ = [
     "audit_coverage",
+    "audit_hypothesis_neutrality",
     "audit_output_constraints",
     "audit_projection_completeness",
     "audit_scale_consistency",
+    "audit_scope_completeness",
     "bind",
 ]

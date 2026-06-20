@@ -37,10 +37,10 @@ from rubrify.engine.executor import LLMApiError  # noqa: F401
 from rubrify.engine.judge_loop import run_judge_loop  # noqa: F401
 from rubrify.ir.bundle import RubricBundle, lock_bundle  # noqa: F401
 from rubrify.ir.types import (  # noqa: F401
-    AdviceRule, BinaryScale, CalibrationExample, Criterion,
-    CriterionGroup, Definition, Disqualifier,
+    AdviceRule, BinaryScale, CalibrationExample, CorpusProfile,
+    Criterion, CriterionGroup, Definition, Disqualifier,
     EvidenceSpec, NominalScale, NumericScale, OrdinalScale,
-    PatternEntry, Rubric, RubricMeta, Scale, ScaleAnchor,
+    PatternEntry, Rubric, RubricMeta, Scale, ScaleAnchor, ScopeSpec,
 )
 from rubrify.ir.constraints import (  # noqa: F401
     AuthorityBlock, CharLimitConstraint, ConstraintBinding,
@@ -56,4 +56,4 @@ try:
 except ImportError:
     pass
 
-__version__ = "0.1.5"
+__version__ = "0.1.6"

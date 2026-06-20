@@ -109,13 +109,20 @@ judge = Judge(JudgeConfig(model=model, api_key="sk-your-key-here"))
 
 ```python
 from rubrify import (
-    Criterion, NumericScale, Rubric, RubricMeta, ScaleAnchor,
-    compile_rubric,
+    CorpusProfile, Criterion, NumericScale, Rubric, RubricMeta,
+    ScaleAnchor, ScopeSpec, compile_rubric,
 )
 
 rubric = Rubric(
     meta=RubricMeta(name="MyRubric", version="1.0"),
     goal="Evaluate response quality.",
+    corpus_profile=CorpusProfile(
+        id="cp_responses",
+        domain="Customer support responses",
+        typical_behaviors=["Agent addresses the customer's question directly"],
+        atypical_behaviors=["Agent ignores the question entirely"],
+        quality_axis="Helpfulness and clarity of response",
+    ),
     criteria=[
         Criterion(
             id="C1",
@@ -129,6 +136,10 @@ rubric = Rubric(
                 ],
             ),
             weight=1.0,
+            scope=ScopeSpec(
+                in_scope=["Sentence structure", "Word choice precision"],
+                out_of_scope=["Factual accuracy", "Tone or politeness"],
+            ),
         ),
     ],
 )
@@ -185,6 +196,52 @@ All rubric structures are Pydantic models with `extra="forbid"` (no unexpected f
 
 The union type `Scale` is: `Annotated[BinaryScale | OrdinalScale | NominalScale | NumericScale, Field(discriminator="kind")]`.
 
+**ScopeSpec** defines an explicit positive/negative interpretation boundary for a criterion. It is structurally bound to a `Criterion` (as an optional field, not a dangling reference). Rendered as `<scope>` children of `<criterion>` in XML -- survives all rendering modes (full, focused, group). Solves the definition mismatch problem where LLM judges interpret criteria more broadly or narrowly than intended.
+
+- `in_scope` -- list of observable behaviors that count toward this criterion
+- `out_of_scope` -- list of observable behaviors that do NOT count
+
+```python
+from rubrify import ScopeSpec
+
+scope = ScopeSpec(
+    in_scope=[
+        "Selects the correct API endpoint for the task",
+        "Chooses appropriate HTTP method",
+    ],
+    out_of_scope=[
+        "Quality of error handling code",
+        "Code style or formatting choices",
+    ],
+)
+```
+
+**CorpusProfile** provides domain context for the evaluation corpus. It is an optional field on `Rubric`. Rendered as `<corpus_profile>` at root level in ALL XML rendering modes. Provides factual domain context (not hypotheses) so the judge calibrates expectations about what is normal vs. unusual in the dataset.
+
+- `id` -- unique identifier
+- `domain` -- the domain being evaluated
+- `typical_behaviors` -- observable things entities in the corpus normally do
+- `atypical_behaviors` -- observable things entities in the corpus normally do NOT do
+- `quality_axis` -- the primary quality dimension being measured
+
+```python
+from rubrify import CorpusProfile
+
+profile = CorpusProfile(
+    id="cp_coding_agents",
+    domain="AI coding agent tool-call traces",
+    typical_behaviors=[
+        "Agents call file-read before file-write",
+        "Agents use grep/find for discovery before targeted reads",
+    ],
+    atypical_behaviors=[
+        "Agents skip discovery and write files blind",
+        "Agents call tools with no arguments",
+    ],
+    quality_axis="How effectively the agent uses available tools to accomplish the task",
+)
+```
+
 **Criterion** is the atomic evaluation unit. Key fields:
 
 - `id` -- unique identifier
@@ -194,12 +251,13 @@ The union type `Scale` is: `Annotated[BinaryScale | OrdinalScale | NominalScale 
 - `evidence` -- `EvidenceSpec` controlling what evidence the judge must cite (note: `required`, `exact_quote`, `min_items`, and `max_items` on EvidenceSpec are prompt-only -- they are rendered into the XML surface so the LLM can see them, but are not enforced post-hoc by the engine)
 - `genre` -- for genre-conditional activation
 - `mechanical_rules` -- free-text rules rendered in XML
+- `scope` -- optional `ScopeSpec` defining the criterion's interpretation boundary
 
 **CriterionGroup** provides hierarchical aggregation over criteria. Supported aggregation strategies: `weighted_sum`, `weighted_mean`, `min`, `max`, `all`, `any`.
 
 **Disqualifier** defines an auto-fail condition. Can be pattern-based (regex scanned first against judge rationales, then against the response text) or criterion-linked (triggers when a specific criterion's unit score is 0).
 
-**Rubric** is the mutable, pre-compilation object. It contains criteria, groups, disqualifiers, instructions, patterns (`PatternEntry` for regex matching), definitions (`Definition`), advice rules (`AdviceRule`), and calibration examples (`CalibrationExample`). Model validators enforce unique criterion IDs and valid group/disqualifier references at construction time.
+**Rubric** is the mutable, pre-compilation object. It contains criteria, groups, disqualifiers, instructions, patterns (`PatternEntry` for regex matching), definitions (`Definition`), advice rules (`AdviceRule`), calibration examples (`CalibrationExample`), and an optional `corpus_profile` (`CorpusProfile`). Model validators enforce unique criterion IDs and valid group/disqualifier references at construction time.
 
 **RubricBundle** is the immutable, locked, executable form produced by the compiler. It contains the frozen rubric, compiled regex patterns, constraint bindings, authority blocks, surface policy, and output constraints. The bundle is frozen via Pydantic's `frozen=True` config.
 
@@ -267,6 +325,8 @@ This is a synchronous, pure function (no LLM calls). It runs these passes:
    - `audit_projection_completeness` -- every binding has projections matching the policy's codecs
    - `audit_scale_consistency` -- ordinal scales have anchors, numeric scales have `max > min`
    - `audit_output_constraints` -- recognized fields, duplicate IDs, hard-enforcement safety
+   - `audit_scope_completeness` -- warns when a `ScopeSpec` has empty `in_scope` or `out_of_scope` (a scope that only defines one side is likely incomplete)
+   - `audit_hypothesis_neutrality` -- warns when instructions contain comparative or hypothesis language (e.g., "difference between", "designed to show") that embeds conclusions into the evaluation instrument
 
 `CompilationResult` has a `.ok` property (True if no issues) and `.issues` list.
 
@@ -379,7 +439,7 @@ Both strategies extract criterion scores via typed Pydantic model attribute acce
 
 Key design: bindings drive the criterion rendering. Each criterion's XML attributes come from its binding's `SurfaceProjection(codec="xml")`, not from raw criterion fields. This closes the triple-layer alignment loop.
 
-The XML document includes: mission, role, rubric (criteria with anchors and evidence specs), disqualifiers, definitions, calibration examples, advice rules, output schema (with JSON template derived from the dynamic Pydantic model), scoring formula, pattern library, validation (output constraints), and instructions.
+The XML document includes: mission, role, corpus profile, rubric (criteria with anchors, evidence specs, and scope specs), disqualifiers, definitions, calibration examples, advice rules, output schema (with JSON template derived from the dynamic Pydantic model), scoring formula, pattern library, validation (output constraints), and instructions. `ScopeSpec` is rendered as `<scope>` children (`<in_scope>`, `<out_of_scope>`) of `<criterion>`. `CorpusProfile` is rendered as `<corpus_profile>` at root level in all three rendering modes (full, focused, group).
 
 `render_criterion_xml(criterion, bundle) -> str` renders a focused document for a single criterion, used when `criterion_focus == "focused"`.
 
@@ -403,7 +463,7 @@ The XML document includes: mission, role, rubric (criteria with anchors and evid
 
 The `rubrify.evolve` module requires the optional `gepa` dependency (`pip install rubrify[evolve]`).
 
-It evolves rubric text components against human-annotated datasets to maximize agreement between automated LLM-judge evaluations and human expert annotations. Structural invariants (criterion IDs, scale types, ranges, groups, disqualifiers, patterns) are never changed. Only text components and weights are evolvable: goal, criterion descriptions, anchor descriptions, weights, role persona/obligations/constraints, instructions, definitions, advice rules, and calibration examples.
+It evolves rubric text components against human-annotated datasets to maximize agreement between automated LLM-judge evaluations and human expert annotations. Structural invariants (criterion IDs, scale types, ranges, groups, disqualifiers, patterns) are never changed. Evolvable components include: goal, criterion descriptions, anchor descriptions, weights, role persona/obligations/constraints, instructions, definitions, advice rules, calibration examples, scope specs (`ScopeSpec.in_scope` and `ScopeSpec.out_of_scope`), and corpus profile fields (`CorpusProfile.typical_behaviors`, `CorpusProfile.atypical_behaviors`, `CorpusProfile.quality_axis`).
 
 ### AnnotatedExample
 
@@ -458,7 +518,7 @@ Practical guidance from the source:
 - 30-50 annotated examples minimum. Fewer than ~15 training examples leads to overfitting.
 - Set `discrimination_weight=0.0` with fewer than ~10 examples.
 - Set `reflection_minibatch_size` equal to training set size for tiny datasets.
-- Budget 100-500 metric calls for real improvement.
+- Budget calibration: a "metric call" = one annotated example evaluated (not one batch or one iteration). Set `max_metric_calls` to at least 20x your dataset size for meaningful exploration. For example, with 40 examples, use `max_metric_calls=800` or higher. Under-budgeting (e.g., 50 calls for a 40-example dataset) causes GEPA to flat-line after 1-2 iterations because it exhausts its budget before finding improvements.
 
 ### evolve_rubric_v3 (Mode 3: Co-evolution)
 
@@ -495,7 +555,7 @@ All four artifact types are packed into a single GEPA candidate dict with namesp
 
 ### Candidate Mapping
 
-`rubric_to_candidate(rubric, role) -> dict[str, str]` decomposes a `Rubric` into GEPA's flat `dict[str, str]` format. Each value is a string; structured sub-components (anchor lists, instructions) are serialized as JSON strings.
+`rubric_to_candidate(rubric, role) -> dict[str, str]` decomposes a `Rubric` into GEPA's flat `dict[str, str]` format. Each value is a string; structured sub-components (anchor lists, instructions, scope specs, corpus profile behaviors) are serialized as JSON strings. Scope specs are mapped as `criterion.{id}.scope.in_scope` and `criterion.{id}.scope.out_of_scope`. Corpus profile fields are mapped as `corpus_profile.typical`, `corpus_profile.atypical`, and `corpus_profile.quality_axis`.
 
 `candidate_to_rubric(candidate, base_rubric, base_role) -> (Rubric, RoleSpec | None)` reconstructs from the flat format, using the base rubric as a structural template.
 
@@ -598,14 +658,14 @@ src/rubrify/
   __init__.py              -- Public API surface (re-exports)
 
   ir/                      -- Intermediate representation (typed core)
-    types.py               -- Scale types, Criterion, CriterionGroup, Disqualifier, Rubric
+    types.py               -- Scale types, Criterion, ScopeSpec, CorpusProfile, CriterionGroup, Disqualifier, Rubric
     roles.py               -- RoleSpec, SurfacePolicy
     constraints.py         -- ConstraintBinding, SurfaceProjection, AuthorityBlock, OutputConstraint (discriminated union)
     bundle.py              -- RubricBundle (immutable), lock_bundle()
 
   compiler/                -- Rubric -> RubricBundle transformation
     compiler.py            -- compile_rubric(), CompilationResult
-    passes.py              -- bind(), audit_coverage(), audit_projection_completeness(), audit_scale_consistency(), audit_output_constraints()
+    passes.py              -- bind(), audit_coverage(), audit_projection_completeness(), audit_scale_consistency(), audit_output_constraints(), audit_scope_completeness(), audit_hypothesis_neutrality()
 
   codecs/                  -- Surface format rendering and parsing
     xml_codec.py           -- render_rubric_xml(), render_criterion_xml(), render_group_xml()

@@ -15,12 +15,14 @@ from typing import Any
 from rubrify.ir.types import (
     AdviceRule,
     CalibrationExample,
+    CorpusProfile,
     Criterion,
     Definition,
     NumericScale,
     OrdinalScale,
     Rubric,
     ScaleAnchor,
+    ScopeSpec,
 )
 from rubrify.ir.roles import RoleSpec
 
@@ -56,6 +58,18 @@ def rubric_to_candidate(rubric: Rubric, role: RoleSpec | None = None) -> dict[st
             candidate[f"{prefix}.anchors"] = json.dumps(anchors_data, indent=2)
 
         candidate[f"{prefix}.weight"] = str(criterion.weight)
+
+        # Scope specification (interpretation boundary)
+        # Always emit keys so GEPA's component selector has stable names.
+        scope = criterion.scope
+        candidate[f"{prefix}.scope.in_scope"] = json.dumps(scope.in_scope if scope else [])
+        candidate[f"{prefix}.scope.out_of_scope"] = json.dumps(scope.out_of_scope if scope else [])
+
+    # Corpus profile — always emit keys for GEPA stability
+    cp = rubric.corpus_profile
+    candidate["corpus_profile.typical"] = json.dumps(cp.typical_behaviors if cp else [])
+    candidate["corpus_profile.atypical"] = json.dumps(cp.atypical_behaviors if cp else [])
+    candidate["corpus_profile.quality_axis"] = cp.quality_axis if cp else ""
 
     # Definitions
     if rubric.definitions:
@@ -139,10 +153,20 @@ def candidate_to_rubric(
         # Weight
         weight = float(candidate.get(f"{prefix}.weight", str(base_crit.weight)))
 
+        # Scope
+        scope = base_crit.scope
+        scope_in_key = f"{prefix}.scope.in_scope"
+        scope_out_key = f"{prefix}.scope.out_of_scope"
+        if scope_in_key in candidate or scope_out_key in candidate:
+            in_scope = json.loads(candidate[scope_in_key]) if scope_in_key in candidate else (scope.in_scope if scope else [])
+            out_of_scope = json.loads(candidate[scope_out_key]) if scope_out_key in candidate else (scope.out_of_scope if scope else [])
+            scope = ScopeSpec(in_scope=in_scope, out_of_scope=out_of_scope)
+
         new_crit = base_crit.model_copy(update={
             "description": desc,
             "scale": scale,
             "weight": weight,
+            "scope": scope,
         })
         new_criteria.append(new_crit)
 
@@ -175,6 +199,20 @@ def candidate_to_rubric(
             for ce in ce_data
         ]
 
+    # Corpus profile
+    corpus_profile = base_rubric.corpus_profile
+    if any(k.startswith("corpus_profile.") for k in candidate):
+        base_cp = base_rubric.corpus_profile
+        typical_raw = candidate.get("corpus_profile.typical")
+        atypical_raw = candidate.get("corpus_profile.atypical")
+        corpus_profile = CorpusProfile(
+            id=base_cp.id if base_cp else "corpus",
+            domain=base_cp.domain if base_cp else "",
+            typical_behaviors=json.loads(typical_raw) if typical_raw is not None else (base_cp.typical_behaviors if base_cp else []),
+            atypical_behaviors=json.loads(atypical_raw) if atypical_raw is not None else (base_cp.atypical_behaviors if base_cp else []),
+            quality_axis=candidate.get("corpus_profile.quality_axis", base_cp.quality_axis if base_cp else ""),
+        )
+
     new_rubric = base_rubric.model_copy(update={
         "goal": goal,
         "criteria": new_criteria,
@@ -182,6 +220,7 @@ def candidate_to_rubric(
         "definitions": definitions,
         "advice_rules": advice_rules,
         "calibration_examples": calibration_examples,
+        "corpus_profile": corpus_profile,
     })
 
     # Role reconstruction
