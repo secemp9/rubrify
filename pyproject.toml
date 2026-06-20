@@ -3,6 +3,7 @@ name = "rubrify"
 version = "0.1.6"
 description = "Rubric compiler and judge engine for LLM evaluation"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "harn-ai",
